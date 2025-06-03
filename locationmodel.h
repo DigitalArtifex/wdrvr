@@ -15,6 +15,7 @@
 #include <QtLocation>
 #include <QGeoLocation>
 #include <QGeoCoordinate>
+#include <QtConcurrent/QtConcurrent>
 
 struct LocationData
 {
@@ -83,7 +84,7 @@ public:
     void setLocation(const LocationData &location);
     Q_INVOKABLE void getLocations(const QGeoCoordinate &center, const qreal &distanceFrom, const qreal &precision);
     void clear();
-    double logScale(double percentage, double min = 2, double max = 500000.0, double base = 10);
+    double logScale(double percentage, double min = 2, double max = 1000000.0, double base = 10);
 
     Q_INVOKABLE void parseKML(QString fileName, bool append = false);
 
@@ -98,6 +99,7 @@ private:
     bool m_debug = false;
     void resetDataModel();
     void startUpdateTimer();
+    QMutex m_threadMutex;
     QVector<LocationData> m_filteredData;
     qreal m_progress = 0;
     QTimer *m_updateTimer = nullptr;

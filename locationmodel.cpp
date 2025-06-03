@@ -86,136 +86,142 @@ void LocationModel::setLocation(const LocationData &location)
 
 void LocationModel::getLocations(const QGeoCoordinate &center, const qreal &distanceFrom, const qreal &precision)
 {
-    qreal timeStart = QDateTime::currentMSecsSinceEpoch();
+    auto result = QtConcurrent::run([this, center, distanceFrom, precision]{
+        if(!m_threadMutex.tryLock(QDeadlineTimer(10)))
+            return;
 
-    //reset the previous data
-    beginResetModel();
-    m_filteredData.clear();
-    endResetModel();
+        qreal timeStart = QDateTime::currentMSecsSinceEpoch();
 
-    //TODO: Group data to viewport with distance from first
-    LocationDataNode *currentNode = m_headNode;
-    LocationDataNode *nodesInViewport = nullptr;
-    LocationDataNode *viewportNodesHead = nullptr;
+        //reset the previous data
+        beginResetModel();
+        m_filteredData.clear();
+        endResetModel();
 
-    quint64 nodesInViewportLength = 0;
+        //TODO: Group data to viewport with distance from first
+        LocationDataNode *currentNode = m_headNode;
+        LocationDataNode *nodesInViewport = nullptr;
+        LocationDataNode *viewportNodesHead = nullptr;
 
-    while(currentNode)
-    {
-        QGeoCoordinate dataCoordinate(currentNode->data.coordinates.x(), currentNode->data.coordinates.y());
-        qreal distance = center.distanceTo(dataCoordinate);
+        quint64 nodesInViewportLength = 0;
 
-        if(distance <= distanceFrom)
+        while(currentNode)
         {
-            if(!viewportNodesHead)
+            QGeoCoordinate dataCoordinate(currentNode->data.coordinates.x(), currentNode->data.coordinates.y());
+            qreal distance = center.distanceTo(dataCoordinate);
+
+            if(distance <= distanceFrom)
             {
-                viewportNodesHead = new LocationDataNode;
-                nodesInViewport = viewportNodesHead;
+                if(!viewportNodesHead)
+                {
+                    viewportNodesHead = new LocationDataNode;
+                    nodesInViewport = viewportNodesHead;
+                }
+                else
+                {
+                    nodesInViewport->next = new LocationDataNode;
+                    nodesInViewport = nodesInViewport->next;
+                }
+
+                nodesInViewport->data = currentNode->data;
+                ++nodesInViewportLength;
             }
-            else
+
+            currentNode = currentNode->next;
+        }
+
+        //reset head for nodes in viewport
+        nodesInViewport = viewportNodesHead;
+
+        //verify (DEBUG)
+        if(m_debug)
+        {
+            quint64 verified = 0;
+            while(nodesInViewport)
             {
-                nodesInViewport->next = new LocationDataNode;
+                ++verified;
                 nodesInViewport = nodesInViewport->next;
             }
 
-            nodesInViewport->data = currentNode->data;
-            ++nodesInViewportLength;
+            //reset head for use
+            nodesInViewport = viewportNodesHead;
+
+            //report status
+            qDebug() << "Verified" << verified << "of" << nodesInViewportLength;
         }
 
-        currentNode = currentNode->next;
-    }
+        //group POI clusters
+        qreal clusterDistance = logScale(precision);
+        LocationDataNode *viewportNodeIteratorA = nodesInViewport;
+        quint64 viewportNodeRemovals = 0;
 
-    //reset head for nodes in viewport
-    nodesInViewport = viewportNodesHead;
-
-    //verify (DEBUG)
-    if(m_debug)
-    {
-        quint64 verified = 0;
-        while(nodesInViewport)
+        while(viewportNodeIteratorA)
         {
-            ++verified;
-            nodesInViewport = nodesInViewport->next;
-        }
+            LocationDataNode *viewportNodeIteratorB = viewportNodeIteratorA->next;
+            LocationDataNode *viewportNodeIteratorC = viewportNodeIteratorA; //last referenced for splicing
 
-        //reset head for use
-        nodesInViewport = viewportNodesHead;
-
-        //report status
-        qDebug() << "Verified" << verified << "of" << nodesInViewportLength;
-    }
-
-    //group POI clusters
-    qreal clusterDistance = logScale(precision);
-    LocationDataNode *viewportNodeIteratorA = nodesInViewport;
-    quint64 viewportNodeRemovals = 0;
-
-    while(viewportNodeIteratorA)
-    {
-        LocationDataNode *viewportNodeIteratorB = viewportNodeIteratorA->next;
-        LocationDataNode *viewportNodeIteratorC = viewportNodeIteratorA; //last referenced for splicing
-
-        while(viewportNodeIteratorB)
-        {
-            QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.x(), viewportNodeIteratorA->data.coordinates.y());
-            QGeoCoordinate coordB(viewportNodeIteratorB->data.coordinates.x(), viewportNodeIteratorB->data.coordinates.y());
-            qreal coordDistance = coordA.distanceTo(coordB);
-
-            if(coordDistance <= clusterDistance)
+            while(viewportNodeIteratorB)
             {
-                viewportNodeIteratorC->next = viewportNodeIteratorB->next;
-                delete viewportNodeIteratorB;
+                QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.x(), viewportNodeIteratorA->data.coordinates.y());
+                QGeoCoordinate coordB(viewportNodeIteratorB->data.coordinates.x(), viewportNodeIteratorB->data.coordinates.y());
+                qreal coordDistance = coordA.distanceTo(coordB);
 
-                --nodesInViewportLength;
-                viewportNodeIteratorB = viewportNodeIteratorC->next;
+                if(coordDistance <= clusterDistance)
+                {
+                    viewportNodeIteratorC->next = viewportNodeIteratorB->next;
+                    delete viewportNodeIteratorB;
 
-                continue;
+                    --nodesInViewportLength;
+                    viewportNodeIteratorB = viewportNodeIteratorC->next;
+
+                    continue;
+                }
+
+                viewportNodeIteratorC = viewportNodeIteratorB;
+                viewportNodeIteratorB = viewportNodeIteratorB->next;
             }
 
-            viewportNodeIteratorC = viewportNodeIteratorB;
-            viewportNodeIteratorB = viewportNodeIteratorB->next;
+            viewportNodeIteratorA = viewportNodeIteratorA->next;
         }
 
-        viewportNodeIteratorA = viewportNodeIteratorA->next;
-    }
-
-    //reset head for nodes in viewport
-    nodesInViewport = viewportNodesHead;
-
-    //verify (DEBUG)
-    if(m_debug)
-    {
-        quint64 verified = 0;
-        while(nodesInViewport)
-        {
-            ++verified;
-            nodesInViewport = nodesInViewport->next;
-        }
-
-        //reset head for use
+        //reset head for nodes in viewport
         nodesInViewport = viewportNodesHead;
 
-        //report status
-        qDebug() << "Groups:" << verified << nodesInViewportLength;
-    }
+        //verify (DEBUG)
+        if(m_debug)
+        {
+            quint64 verified = 0;
+            while(nodesInViewport)
+            {
+                ++verified;
+                nodesInViewport = nodesInViewport->next;
+            }
 
-    //move filtered items to the vector and clean up the nodes along the way
-    beginInsertRows(QModelIndex(), 0, nodesInViewportLength - 1);
-    while(nodesInViewport)
-    {
-        LocationData data = nodesInViewport->data;
-        m_filteredData.append(data);
+            //reset head for use
+            nodesInViewport = viewportNodesHead;
 
-        LocationDataNode *tempNode = nodesInViewport;
-        nodesInViewport = nodesInViewport->next;
-        delete tempNode;
-    }
+            //report status
+            qDebug() << "Groups:" << verified << nodesInViewportLength;
+        }
 
-    endInsertRows();
+        //move filtered items to the vector and clean up the nodes along the way
+        beginInsertRows(QModelIndex(), 0, nodesInViewportLength - 1);
+        while(nodesInViewport)
+        {
+            LocationData data = nodesInViewport->data;
+            m_filteredData.append(data);
 
-    qreal endTime = QDateTime::currentMSecsSinceEpoch();
+            LocationDataNode *tempNode = nodesInViewport;
+            nodesInViewport = nodesInViewport->next;
+            delete tempNode;
+        }
 
-    qDebug() << "Sorted nodes in" << endTime - timeStart << "ms";
+        endInsertRows();
+        m_threadMutex.unlock();
+
+        qreal endTime = QDateTime::currentMSecsSinceEpoch();
+
+        qDebug() << "Sorted nodes in" << endTime - timeStart << "ms";
+    });
 }
 
 void LocationModel::clear()
