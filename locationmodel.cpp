@@ -241,145 +241,205 @@ double LocationModel::logScale(double percentage, double min, double max)
 
 void LocationModel::parseKML(QString fileName, bool append)
 {
-    QFile file(fileName);
-    qDebug() << "Opening file" << fileName;
 
-    if(!file.exists())
-    {
-        qDebug() << "Couldnt open file " + file.errorString();
-        emit error("File Error", "Could not open file due to invalid filename or path.");
-        return;
-    }
+    auto result = QtConcurrent::run([this, fileName, append] {
 
-    if(!file.open(QFile::ReadOnly))
-    {
-        qDebug() << "Couldnt open file " + file.errorString();
-        emit error("File Error", "Could not open file. " + file.errorString());
-        return;
-    }
+        if(!m_threadMutex.tryLock(QDeadlineTimer(1500)))
+            return;
 
-    if(!append)
-        resetDataModel();
+        QFile file(fileName);
+        qDebug() << "Opening file" << fileName;
 
-    startUpdateTimer();
-
-    QXmlStreamReader xml(&file);
-
-    while(!xml.atEnd())
-    {
-        xml.readNextStartElement();
-        QString elementName = xml.name().toString().toLower();
-        if(elementName.toLower() == "placemark")
+        if(!file.exists())
         {
-            LocationData data;
+            qDebug() << "Couldnt open file " + file.errorString();
+            emit error("File Error", "Could not open file due to invalid filename or path.");
+            return;
+        }
 
-            bool placemark = true;
-            while(placemark)
+        if(!file.open(QFile::ReadOnly))
+        {
+            qDebug() << "Couldnt open file " + file.errorString();
+            emit error("File Error", "Could not open file. " + file.errorString());
+            return;
+        }
+
+        if(!append)
+            resetDataModel();
+
+        startUpdateTimer();
+
+        QXmlStreamReader xml(&file);
+        quint64 pois = 0;
+        quint64 bluetooth = 0;
+        quint64 cellular = 0;
+        quint64 wifi = 0;
+
+        while(!xml.atEnd())
+        {
+            xml.readNextStartElement();
+            QString elementName = xml.name().toString().toLower();
+            if(elementName.toLower() == "placemark")
             {
-                //read by element type to catch the end of the placemark
-                xml.readNext();
-                elementName = xml.name().toString().toLower();
+                LocationData data;
 
-                if(xml.isEndElement() && elementName == "placemark")
+                bool placemark = true;
+                while(placemark)
                 {
-                    placemark = false;
-                    continue;
-                }
-                else if(!xml.isStartElement())
-                    continue;
+                    //read by element type to catch the end of the placemark
+                    xml.readNext();
+                    elementName = xml.name().toString().toLower();
 
-                QString markerAttribute = xml.name().toString().toLower();
-
-                if(markerAttribute == "name")
-                    data.name = xml.readElementText();
-
-                else if(markerAttribute == "description")
-                    data.description = xml.readElementText();
-
-                else if(markerAttribute == "styleurl")
-                    data.styleTag = xml.readElementText();
-
-                else if(markerAttribute == "point")
-                {
-                    bool position = true;
-                    while(position)
+                    if(xml.isEndElement() && elementName == "placemark")
                     {
-                        xml.readNext();
-                        elementName = xml.name().toString().toLower();
+                        placemark = false;
+                        continue;
+                    }
+                    else if(!xml.isStartElement())
+                        continue;
 
-                        if(xml.isEndElement() && elementName == "point")
+                    QString markerAttribute = xml.name().toString().toLower();
+
+                    if(markerAttribute == "name")
+                        data.name = xml.readElementText();
+
+                    else if(markerAttribute == "description")
+                    {
+                        QString description = xml.readElementText();
+
+                        QStringList lines = description.split(QString("\n"), Qt::SkipEmptyParts);
+
+                        for(const QString &line : std::as_const(lines))
                         {
-                            position = false;
-                            continue;
-                        }
-                        else if(!xml.isStartElement())
-                            continue;
+                            QStringList descriptorParts = line.split(QString(": "), Qt::SkipEmptyParts);
 
-                        QString positionAttribute = xml.name().toString().toLower();
-
-                        if(positionAttribute == "coordinates")
-                        {
-                            QString coordinateString = xml.readElementText();
-                            QStringList coordinateList = coordinateString.split(',');
-
-                            if(coordinateList.count() == 2)
+                            if(descriptorParts.count() > 1)
                             {
-                                //wiggle has them backwards
-                                qreal x = coordinateList[1].toDouble();
-                                qreal y = coordinateList[0].toDouble();
+                                QString key = descriptorParts.takeAt(0).toLower();
+                                QString value = descriptorParts.join(':');
 
-                                data.coordinates = QGeoCoordinate(x, y);
+                                if(key == "type")
+                                {
+                                    if(value.toLower() == "wifi")
+                                        ++wifi;
+                                    else if(value.toLower() == "bluetooth")
+                                        ++bluetooth;
+                                    else if(value.toLower() == "cellular")
+                                        ++cellular;
+
+                                    data.type = value;
+                                }
+                                else if(key == "encryption")
+                                    data.encryption = value;
+                                else if(key == "capabilities")
+                                    data.encryption = value;
+                                else if(key == "frequency")
+                                    data.encryption = value;
+                                else if(key == "time")
+                                    data.encryption = value;
+                                else if(key == "signal")
+                                    data.encryption = value;
+                                else if(key == "roamingcois")
+                                    data.encryption = value;
+                            }
+                        }
+
+                        data.description = description;
+                    }
+
+                    else if(markerAttribute == "styleurl")
+                        data.styleTag = xml.readElementText();
+
+                    else if(markerAttribute == "point")
+                    {
+                        bool position = true;
+                        while(position)
+                        {
+                            xml.readNext();
+                            elementName = xml.name().toString().toLower();
+
+                            if(xml.isEndElement() && elementName == "point")
+                            {
+                                position = false;
+                                continue;
+                            }
+                            else if(!xml.isStartElement())
+                                continue;
+
+                            QString positionAttribute = xml.name().toString().toLower();
+
+                            if(positionAttribute == "coordinates")
+                            {
+                                QString coordinateString = xml.readElementText();
+                                QStringList coordinateList = coordinateString.split(',');
+
+                                if(coordinateList.count() == 2)
+                                {
+                                    //wiggle has them backwards
+                                    qreal x = coordinateList[1].toDouble();
+                                    qreal y = coordinateList[0].toDouble();
+
+                                    data.coordinates = QGeoCoordinate(x, y);
+                                }
                             }
                         }
                     }
+
+                    else if(markerAttribute == "open")
+                        data.open = xml.readElementText().toInt();
                 }
 
-                else if(markerAttribute == "open")
-                    data.open = xml.readElementText().toInt();
+                if(!m_headNode)
+                {
+                    m_headNode = new LocationDataNode;
+                    m_lastNode = m_headNode;
+                }
+                else
+                {
+                    m_lastNode->next = new LocationDataNode;
+                    m_lastNode = m_lastNode->next;
+                }
+
+                m_lastNode->data = data;
+
+                // this->append(data);
+
+                ++m_nodeLength;
             }
-
-            if(!m_headNode)
-            {
-                m_headNode = new LocationDataNode;
-                m_lastNode = m_headNode;
-            }
-            else
-            {
-                m_lastNode->next = new LocationDataNode;
-                m_lastNode = m_lastNode->next;
-            }
-
-            m_lastNode->data = data;
-
-            // this->append(data);
-
-            ++m_nodeLength;
         }
-    }
 
-    m_updateTimer->stop();
-    file.close();
+        m_updateTimer->stop();
+        file.close();
 
-    if(xml.hasError())
-    {
-        qDebug() << xml.errorString();
-    }
+        setTotalPointsOfInterest(m_nodeLength);
+        setBluetoothPointsOfInterest(bluetooth);
+        setCellularPointsOfInterest(cellular);
+        setWifiPointsOfInterest(wifi);
 
-    qDebug() << "Parsed" << m_nodeLength << "POIs";
-
-    if(m_debug)
-    {
-        quint64 verified = 0;
-        LocationDataNode *node = m_headNode;
-
-        while(node)
+        if(xml.hasError())
         {
-            ++verified;
-            node = node->next;
+            qDebug() << xml.errorString();
         }
 
-        qDebug() << "Verified" << verified << "POIs";
-    }
+        qDebug() << "Parsed" << m_nodeLength << "POIs";
+
+        if(m_debug)
+        {
+            quint64 verified = 0;
+            LocationDataNode *node = m_headNode;
+
+            while(node)
+            {
+                ++verified;
+                node = node->next;
+            }
+
+            qDebug() << "Verified" << verified << "POIs";
+        }
+
+        m_threadMutex.unlock();
+    });
+
 }
 
 void LocationModel::openFile(QString fileName, bool append)
@@ -458,6 +518,10 @@ void LocationModel::resetDataModel()
     //signal model reset
     beginResetModel();
 
+    setTotalPointsOfInterest(0);
+    setBluetoothPointsOfInterest(0);
+    setCellularPointsOfInterest(0);
+
     //iterate over nodes and delete them as we go
     while(m_headNode)
     {
@@ -512,4 +576,56 @@ void LocationModel::startUpdateTimer()
     }
 
     m_updateTimer->start();
+}
+
+quint64 LocationModel::wifiPointsOfInterest() const
+{
+    return m_wifiPointsOfInterest;
+}
+
+void LocationModel::setWifiPointsOfInterest(quint64 wifiPointsOfInterest)
+{
+    if (m_wifiPointsOfInterest == wifiPointsOfInterest)
+        return;
+    m_wifiPointsOfInterest = wifiPointsOfInterest;
+    emit wifiPointsOfInterestChanged();
+}
+
+quint64 LocationModel::cellularPointsOfInterest() const
+{
+    return m_cellularPointsOfInterest;
+}
+
+void LocationModel::setCellularPointsOfInterest(quint64 cellularPointsOfInterest)
+{
+    if (m_cellularPointsOfInterest == cellularPointsOfInterest)
+        return;
+    m_cellularPointsOfInterest = cellularPointsOfInterest;
+    emit cellularPointsOfInterestChanged();
+}
+
+quint64 LocationModel::bluetoothPointsOfInterest() const
+{
+    return m_bluetoothPointsOfInterest;
+}
+
+void LocationModel::setBluetoothPointsOfInterest(quint64 bluetoothPointsOfInterest)
+{
+    if (m_bluetoothPointsOfInterest == bluetoothPointsOfInterest)
+        return;
+    m_bluetoothPointsOfInterest = bluetoothPointsOfInterest;
+    emit bluetoothPointsOfInterestChanged();
+}
+
+quint64 LocationModel::totalPointsOfInterest() const
+{
+    return m_totalPointsOfInterest;
+}
+
+void LocationModel::setTotalPointsOfInterest(quint64 totalPointsOfInterest)
+{
+    if (m_totalPointsOfInterest == totalPointsOfInterest)
+        return;
+    m_totalPointsOfInterest = totalPointsOfInterest;
+    emit totalPointsOfInterestChanged();
 }

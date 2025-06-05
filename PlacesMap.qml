@@ -27,8 +27,7 @@ Rectangle
         {
             id: myPlugin
             name: "osm"
-            PluginParameter { name: "osm.useragent"; value: "My great Qt OSM application" }
-            PluginParameter { name: "osm.mapping.host"; value: "http://osm.tile.server.address/" }
+            PluginParameter { name: "osm.useragent"; value: "wdrvr 0.1" }
             PluginParameter { name: "osm.mapping.copyright"; value: "" }
             // PluginParameter { name: "osm.routing.host"; value: "http://osrm.server.address/viaroute" }
             // PluginParameter { name: "osm.geocoding.host"; value: "http://geocoding.server.address" }
@@ -138,15 +137,6 @@ Rectangle
                             text: name
                             font.bold: true
                         }
-
-                        // Rectangle
-                        // {
-                        //     id: marker
-                        //     width: 50
-                        //     height: 50
-                        //     color: "#800000FF"
-                        //     radius: 180
-                        // }
                     }
                 }
             }
@@ -161,8 +151,8 @@ Rectangle
             {
                 locationModel.openFile(selectedFile, append)
 
-                var cord = view.map.toCoordinate(Qt.point(0,0))
-                var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
+                var cord = view.map.toCoordinate(Qt.point(0, view.map.height / 2), true)
+                var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2), true)
                 locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
             }
         }
@@ -373,13 +363,224 @@ Rectangle
         }
     }
 
+    ColumnLayout
+    {
+        anchors.fill: parent
+        z: 11
+
+        Rectangle
+        {
+            id: legendPanel
+
+            Layout.preferredWidth: 320
+            Layout.preferredHeight: 180
+            Layout.minimumHeight: 160
+            Layout.minimumWidth: 90
+            Layout.rightMargin: 6
+            Layout.topMargin: 6
+            Layout.bottomMargin: 6
+            Layout.alignment: Qt.AlignBottom | Qt.AlignRight
+            color: "#AA000000"
+
+            ColumnLayout
+            {
+                anchors.fill: parent
+                Rectangle
+                {
+                    Layout.fillHeight: true;
+                    Layout.fillWidth: true;
+                    color: "transparent"
+                    Layout.topMargin: 12
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+
+                    RowLayout
+                    {
+
+                        anchors.fill: parent
+                        Rectangle
+                        {
+                            Layout.fillHeight: true;
+                            Layout.fillWidth: true;
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            color: "transparent"
+                            Image
+                            {
+                                id: locationImage
+                                anchors.left: parent.left
+                                width: 24
+                                height: 24
+                                smooth: true
+                                fillMode: Image.PreserveAspectFit
+                                antialiasing: true
+                                source: "icons/location.png"
+                                verticalAlignment: Image.AlignVCenter
+                            }
+
+                            Text
+                            {
+                                text: "<h3>Total</h3>"
+                                anchors.left: locationImage.right
+                                color: "white"
+                                leftPadding: 6
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                            }
+
+                            Text
+                            {
+                                anchors.right: parent.right
+                                text: locationModel.totalPointsOfInterest
+                                color: "white"
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        Rectangle
+                        {
+                            Layout.fillHeight: true;
+                            Layout.fillWidth: true;
+                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                            color: "transparent"
+
+                            Image
+                            {
+                                id: wifiImage
+                                width: 24
+                                height: 24
+                                smooth: true
+                                fillMode: Image.PreserveAspectFit
+                                source: "icons/wifi.png"
+                                anchors.left: parent.left
+                                verticalAlignment: Image.AlignVCenter
+                            }
+
+                            Text
+                            {
+                                text: "<h3>WiFi</h3>"
+                                color: "white"
+                                anchors.left: wifiImage.right
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                                leftPadding: 6
+                            }
+
+                            Text
+                            {
+                                anchors.right: parent.right
+                                text: locationModel.wifiPointsOfInterest
+                                color: "white"
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+                }
+                Rectangle
+                {
+                    Layout.fillHeight: true;
+                    Layout.fillWidth: true;
+                    color: "transparent"
+                    Layout.topMargin: 12
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+
+                    RowLayout
+                    {
+                        Layout.topMargin: 6
+
+                        anchors.fill: parent
+                        Rectangle
+                        {
+                            Layout.fillHeight: true;
+                            Layout.fillWidth: true;
+                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                            color: "transparent"
+                            Image
+                            {
+                                id: bluetoothImage
+                                width: 24
+                                height: 24
+                                smooth: true
+                                fillMode: Image.PreserveAspectFit
+                                antialiasing: true
+                                source: "icons/bluetooth.png"
+                                anchors.left: parent.left
+                                verticalAlignment: Image.AlignVCenter
+                            }
+
+                            Text
+                            {
+                                text: "<h3>Bluetooth</h3>"
+                                anchors.left: bluetoothImage.right
+                                color: "white"
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                                leftPadding: 6
+                            }
+
+                            Text
+                            {
+                                anchors.right: parent.right
+                                text: locationModel.bluetoothPointsOfInterest
+                                color: "white"
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                        Rectangle
+                        {
+                            Layout.fillHeight: true;
+                            Layout.fillWidth: true;
+                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                            color: "transparent"
+                            Image
+                            {
+                                id: cellularImage
+                                width: 24
+                                height: 24
+                                smooth: true
+                                fillMode: Image.PreserveAspectFit
+                                antialiasing: true
+                                source: "icons/radio.png"
+                                anchors.left: parent.left
+                                verticalAlignment: Image.AlignVCenter
+                            }
+
+                            Text
+                            {
+                                text: "<h3>Cellular</h3>"
+                                anchors.left: cellularImage.right
+                                color: "white"
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                                leftPadding: 6
+                            }
+
+                            Text
+                            {
+                                anchors.right: parent.right
+                                text: locationModel.cellularPointsOfInterest
+                                color: "white"
+                                height: 24
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Connections {
-        // target: locationModel
-        // function onDataChanged() {
-        //     console.log("Updated")
-        //     update();
-        //     view.map.update()
-        // }
+        target: locationModel
+        function onDataChanged() {
+            console.log("Updated")
+            update();
+            view.map.update()
+        }
     }
 
     onWidthChanged:
