@@ -73,6 +73,14 @@
         <file>icons/svgrepo/scalable/mimetypes/zip-document.svg</file>
         <file>icons/svgrepo/scalable/menu.svg</file>
         <file>icons/svgrepo/scalable/settings.svg</file>
+        <file>icons/svgrepo/scalable/location-pin.svg</file>
+        <file>icons/svgrepo/scalable/radio-tower.svg</file>
+        <file>icons/svgrepo/scalable/bluetooth-circle.svg</file>
+        <file>icons/svgrepo/scalable/wifi-2-logo.svg</file>
         <file>icons/svgrepo/index.theme</file>
+        <file>icons/location.png</file>
+        <file>icons/wifi.png</file>
+        <file>icons/bluetooth.png</file>
+        <file>icons/radio.png</file>
     </qresource>
 </RCC>
