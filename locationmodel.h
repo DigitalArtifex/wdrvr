@@ -15,7 +15,25 @@
 #include <QtLocation>
 #include <QGeoLocation>
 #include <QGeoCoordinate>
-#include <QtConcurrent/QtConcurrent>
+#include <QtConcurrent/QtConcurrentRun>
+
+/*
+ * Location data memory mapping
+ *
+ * In order to efficiently store and sort potentially millions of POIs we should be able to break it
+ * up into multiple smaller steps.
+ *
+ *
+ */
+struct LocationDataNode;
+
+struct Sector
+{
+    LocationDataNode *head = nullptr;
+    LocationDataNode *last = nullptr;
+
+    quint64 locations;
+};
 
 struct LocationData
 {
@@ -23,29 +41,8 @@ struct LocationData
     QString styleTag;
     QString description;
     int open = 0;
-    QPointF coordinates;
+    QGeoCoordinate coordinates;
     qint64 clusterCount = 1;
-
-    // LocationData();
-    // LocationData(const LocationData &other)
-    // {
-
-    // }
-
-    // LocationData &operator=(const LocationData &other)
-    // {
-
-    // }
-
-    // bool operator==(const LocationData &data)
-    // {
-    //     return coordinates == data.coordinates;
-    // }
-
-    // bool operator!=(const LocationData &data)
-    // {
-    //     return !(coordinates == data.coordinates);
-    // }
 };
 
 Q_DECLARE_METATYPE(LocationData)
@@ -55,6 +52,7 @@ struct LocationDataNode
     LocationData data;
     LocationDataNode *next = nullptr;
     LocationDataNode() {}
+    LocationDataNode(const LocationData &data) { this->data = data; }
 };
 
 class LocationModel : public QAbstractListModel
@@ -84,18 +82,23 @@ public:
     void setLocation(const LocationData &location);
     Q_INVOKABLE void getLocations(const QGeoCoordinate &center, const qreal &distanceFrom, const qreal &precision);
     void clear();
-    double logScale(double percentage, double min = 2, double max = 1000000.0, double base = 10);
+    double logScale(double percentage, double min = 10, double max = 500000.0);
 
     Q_INVOKABLE void parseKML(QString fileName, bool append = false);
+    Q_INVOKABLE void openFile(QString fileName, bool append = false);
 
     qreal progress() const;
     void setProgress(qreal progress);
+
+    void append(const LocationData &data);
 
 signals:
     void error(QString title, QString message);
     void progressChanged();
 
 private:
+    //Sector m_sectors[180][360];
+
     bool m_debug = false;
     void resetDataModel();
     void startUpdateTimer();

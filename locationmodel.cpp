@@ -3,7 +3,6 @@
 LocationModel::LocationModel(QObject *parent)
     : QAbstractListModel{parent}
 {
-
 }
 
 LocationModel::~LocationModel()
@@ -29,7 +28,7 @@ QVariant LocationModel::data(const QModelIndex &index, int role) const
     switch(static_cast<LocationDataRole>(role))
     {
     case LocationRole:
-        data = QVariant::fromValue<QPointF>(m_filteredData[index.row()].coordinates);
+        data = QVariant::fromValue<QGeoCoordinate>(m_filteredData[index.row()].coordinates);
         break;
     case NameRole:
         data = QVariant::fromValue<QString>(m_filteredData[index.row()].name);
@@ -86,7 +85,7 @@ void LocationModel::setLocation(const LocationData &location)
 
 void LocationModel::getLocations(const QGeoCoordinate &center, const qreal &distanceFrom, const qreal &precision)
 {
-    auto result = QtConcurrent::run([this, center, distanceFrom, precision]{
+    auto result = QtConcurrent::run([this, center, distanceFrom, precision] {
         if(!m_threadMutex.tryLock(QDeadlineTimer(10)))
             return;
 
@@ -106,7 +105,7 @@ void LocationModel::getLocations(const QGeoCoordinate &center, const qreal &dist
 
         while(currentNode)
         {
-            QGeoCoordinate dataCoordinate(currentNode->data.coordinates.x(), currentNode->data.coordinates.y());
+            QGeoCoordinate dataCoordinate(currentNode->data.coordinates.latitude(), currentNode->data.coordinates.longitude());
             qreal distance = center.distanceTo(dataCoordinate);
 
             if(distance <= distanceFrom)
@@ -161,8 +160,8 @@ void LocationModel::getLocations(const QGeoCoordinate &center, const qreal &dist
 
             while(viewportNodeIteratorB)
             {
-                QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.x(), viewportNodeIteratorA->data.coordinates.y());
-                QGeoCoordinate coordB(viewportNodeIteratorB->data.coordinates.x(), viewportNodeIteratorB->data.coordinates.y());
+                QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.latitude(), viewportNodeIteratorA->data.coordinates.longitude());
+                QGeoCoordinate coordB(viewportNodeIteratorB->data.coordinates.latitude(), viewportNodeIteratorB->data.coordinates.longitude());
                 qreal coordDistance = coordA.distanceTo(coordB);
 
                 if(coordDistance <= clusterDistance)
@@ -204,18 +203,21 @@ void LocationModel::getLocations(const QGeoCoordinate &center, const qreal &dist
         }
 
         //move filtered items to the vector and clean up the nodes along the way
+        quint64 row = 0;
         beginInsertRows(QModelIndex(), 0, nodesInViewportLength - 1);
         while(nodesInViewport)
         {
+            // beginInsertRows(QModelIndex(), row, row);
             LocationData data = nodesInViewport->data;
             m_filteredData.append(data);
 
             LocationDataNode *tempNode = nodesInViewport;
             nodesInViewport = nodesInViewport->next;
             delete tempNode;
+            // ++row;
         }
-
         endInsertRows();
+
         m_threadMutex.unlock();
 
         qreal endTime = QDateTime::currentMSecsSinceEpoch();
@@ -229,22 +231,16 @@ void LocationModel::clear()
     resetDataModel();
 }
 
-double LocationModel::logScale(double percentage, double min, double max, double base)
+double LocationModel::logScale(double percentage, double min, double max)
 {
-    if (percentage < 0.00001) percentage = 0.00001;
+    if (percentage < 0.0001) percentage = 0.0001;
     if (percentage > 1.0) percentage = 1.0;
 
-    // Step 1: Make input percentage logarithmic
     return max * std::pow(min / max, percentage);
 }
 
 void LocationModel::parseKML(QString fileName, bool append)
 {
-    if(!fileName.startsWith("file://"))
-        return;
-
-    fileName.remove(0,7);
-
     QFile file(fileName);
     qDebug() << "Opening file" << fileName;
 
@@ -262,7 +258,9 @@ void LocationModel::parseKML(QString fileName, bool append)
         return;
     }
 
-    resetDataModel();
+    if(!append)
+        resetDataModel();
+
     startUpdateTimer();
 
     QXmlStreamReader xml(&file);
@@ -330,7 +328,7 @@ void LocationModel::parseKML(QString fileName, bool append)
                                 qreal x = coordinateList[1].toDouble();
                                 qreal y = coordinateList[0].toDouble();
 
-                                data.coordinates = QPointF(x, y);
+                                data.coordinates = QGeoCoordinate(x, y);
                             }
                         }
                     }
@@ -353,6 +351,8 @@ void LocationModel::parseKML(QString fileName, bool append)
 
             m_lastNode->data = data;
 
+            // this->append(data);
+
             ++m_nodeLength;
         }
     }
@@ -364,14 +364,6 @@ void LocationModel::parseKML(QString fileName, bool append)
     {
         qDebug() << xml.errorString();
     }
-
-    //setLocations(locations);
-
-    // QList<int> roles { LocationRole, NameRole, StyleRole, DescriptionRole, OpenNetworksRole };
-    // const QModelIndex start = index(0, 0);
-    // const QModelIndex end = index(m_data.count() > 0 ? m_data.count() - 1 : 0, 0);
-
-    // emit dataChanged(start, end, roles);
 
     qDebug() << "Parsed" << m_nodeLength << "POIs";
 
@@ -388,6 +380,17 @@ void LocationModel::parseKML(QString fileName, bool append)
 
         qDebug() << "Verified" << verified << "POIs";
     }
+}
+
+void LocationModel::openFile(QString fileName, bool append)
+{
+    if(!fileName.startsWith("file://", Qt::CaseInsensitive))
+        return;
+
+    fileName.remove(0,7);
+
+    if(fileName.endsWith(".kml", Qt::CaseInsensitive))
+        parseKML(fileName, append);
 }
 
 qreal LocationModel::progress() const
@@ -408,6 +411,48 @@ void LocationModel::setProgress(qreal progress)
     m_progress = progress;
 }
 
+void LocationModel::append(const LocationData &data)
+{
+    // int latitudeIndex = std::round(data.coordinates.latitude() + 90);
+    // int longitudeIndex = std::round(data.coordinates.longitude() + 180);
+
+    // ++m_sectors[latitudeIndex][longitudeIndex].locations;
+
+    // //construct the first POI for the sector
+    // if(!m_sectors[latitudeIndex][longitudeIndex].head)
+    // {
+    //     m_sectors[latitudeIndex][longitudeIndex].head = new LocationDataNode;
+    //     m_sectors[latitudeIndex][longitudeIndex].last = m_sectors[longitudeIndex][latitudeIndex].head;
+
+    //     m_sectors[latitudeIndex][longitudeIndex].head->data = data;
+
+    //     return;
+    // }
+
+    // QGeoCoordinate dataCoordinate(data.coordinates.latitude(),data.coordinates.longitude());
+    // qreal dataDistance = QGeoCoordinate(-90, -180).distanceTo(dataCoordinate);
+
+    // LocationDataNode *node = m_sectors[latitudeIndex][longitudeIndex].head;
+    // qreal nodeDistance;
+
+    // while(node->next)
+    // {
+    //     nodeDistance = QGeoCoordinate(-90, -180).distanceTo(node->next->data.coordinates);
+
+    //     if(nodeDistance > dataDistance)
+    //     {
+    //         LocationDataNode *nextNode = node->next;
+    //         node->next = new LocationDataNode(data);
+    //         node->next->next = nextNode;
+
+    //         return;
+    //     }
+    // }
+
+    // //new data point is the furthest
+    // node->next = new LocationDataNode(data);
+}
+
 void LocationModel::resetDataModel()
 {
     //signal model reset
@@ -424,6 +469,23 @@ void LocationModel::resetDataModel()
         //decrease node length as a way to verify we were successful
         --m_nodeLength;
     }
+
+    //sectored data
+    // for(int latitude = 0; latitude < 180; ++latitude)
+    // {
+    //     for(int longitude = 0; longitude < 360; ++longitude)
+    //     {
+    //         LocationDataNode *node = m_sectors[longitude][latitude].head;
+
+    //         while(node)
+    //         {
+    //             LocationDataNode *currentNode = node;
+    //             node = node->next;
+
+    //             delete currentNode;
+    //         }
+    //     }
+    // }
 
     //clear the filtered data vector
     m_filteredData.clear();
