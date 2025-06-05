@@ -15,80 +15,23 @@ import QtLocation
 Rectangle
 {
     property bool append: false;
+    property bool changing: false;
     anchors.fill: parent
-    MenuBar
-    {
-        id: menu
-        Menu
-        {
-            title: qsTr("&File")
-            Action
-            {
-                id: importAction
-                text: qsTr("&Import...")
 
-                onTriggered:
-                {
-                    //qppend = false
-                    fileDialog.open()
-                }
-            }
-            Action
-            {
-                id: appendAction
-                text: qsTr("&Append...")
-
-                onTriggered:
-                {
-                    append = true
-                    fileDialog.open()
-                }
-            }
-            Action
-            {
-                id: saveAction
-                text: qsTr("&Save")
-            }
-            Action
-            {
-                id: saveAsAction
-                text: qsTr("Save &As...")
-            }
-            MenuSeparator { }
-            Action
-            {
-                id: quitAction
-                text: qsTr("&Quit")
-
-                onTriggered:
-                {
-                    Qt.exit(0)
-                }
-            }
-        }
-        height: 35
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-    }
     Rectangle
     {
-        Layout.fillWidth: true
-        Layout.fillHeight: true
-        anchors.top: menu.bottom
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
+        anchors.fill: parent
 
         //! [Initialize Plugin]
         Plugin
         {
             id: myPlugin
             name: "osm"
-            //specify plugin parameters if necessary
-            //PluginParameter {...}
-            //PluginParameter {...}
-            //...
+            PluginParameter { name: "osm.useragent"; value: "My great Qt OSM application" }
+            PluginParameter { name: "osm.mapping.host"; value: "http://osm.tile.server.address/" }
+            PluginParameter { name: "osm.mapping.copyright"; value: "" }
+            // PluginParameter { name: "osm.routing.host"; value: "http://osrm.server.address/viaroute" }
+            // PluginParameter { name: "osm.geocoding.host"; value: "http://geocoding.server.address" }
         }
         //! [Initialize Plugin]
 
@@ -131,12 +74,14 @@ Rectangle
                 model: locationModel
                 parent: view.map
 
-                MouseArea {
+                MouseArea
+                {
                     anchors.fill: parent
                     property variant startCoordinate
                     property bool panning: false
 
-                    onPressed: {
+                    onPressed:
+                    {
                          startCoordinate = view.map.center
                          panning = true
                     }
@@ -150,23 +95,19 @@ Rectangle
                             locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
                         }
                     }
-
-                    onReleased: {
-                    }
-
                 }
                 delegate: MapQuickItem
                 {
-                    coordinate: QtPositioning.coordinate(location.x, location.y)
+                    coordinate: QtPositioning.coordinate(location.latitude, location.longitude)
 
-                    anchorPoint.x: image.width * 0.5
-                    anchorPoint.y: image.height
+                    anchorPoint.x: marker.width * 0.5
+                    anchorPoint.y: marker.height
 
                     sourceItem: Column
                     {
                         Image
                         {
-                            id: image
+                            id: marker
                             source: "marker.png"
 
                             ToolTip.visible: mouseArea.containsMouse
@@ -179,16 +120,38 @@ Rectangle
                                anchors.fill: parent
                                hoverEnabled: true
                             }
+
+                            states:
+                            [
+                                State
+                                {
+                                    when: style === '#highConfidence'
+                                    PropertyChanges {
+                                        marker.source: ""
+                                    }
+                                }
+                            ]
                         }
+
                         Text
                         {
                             text: name
                             font.bold: true
                         }
+
+                        // Rectangle
+                        // {
+                        //     id: marker
+                        //     width: 50
+                        //     height: 50
+                        //     color: "#800000FF"
+                        //     radius: 180
+                        // }
                     }
                 }
             }
         }
+
         //! [Places MapItemView]
         FileDialog {
             id: fileDialog
@@ -196,14 +159,216 @@ Rectangle
             nameFilters: ["WiGLE XML files (*.kml)"]
             onAccepted:
             {
-                var file = selectedFile.toLowerCase;
-                var endsWithXml = /kml$/;
+                locationModel.openFile(selectedFile, append)
 
-                //if (endsWithXml.test(file))
-                    locationModel.parseKML(selectedFile, append)
                 var cord = view.map.toCoordinate(Qt.point(0,0))
                 var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
                 locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
+            }
+        }
+    }
+
+    Rectangle
+    {
+        anchors.fill: parent
+
+        width: 74
+        height: 74
+        z: 12
+        id: menuControl
+        color: "transparent"
+
+        ColumnLayout
+        {
+            anchors.fill: parent
+            z: 12
+            Rectangle
+            {
+                id: menuBox
+                // width: 62
+                // height: 62
+                color: "#88000000"
+
+                Layout.topMargin: 6
+                Layout.rightMargin: 6
+                Layout.alignment: Qt.AlignTop | Qt.AlignLeft
+                Layout.minimumHeight: 62
+                Layout.minimumWidth: 62
+                Layout.preferredWidth: 62
+
+                states:
+                [
+                    State {
+                        name: "open"
+                        PropertyChanges
+                        {
+                            menuBox.width: 640 < menuBox.parent.width ? 640 : menuBox.parent.width
+                            menuControl.width: 652 < menuControl.parent.width ? 652 : menuControl.parent.width
+                            menuButton.state: 'open'
+                            importFileButton.opacity: 1
+                            mapSelector.opacity: 1
+                            menuBox.color: "#88000000"
+                            settingsButton.opacity: 1
+                        }
+                    }
+                ]
+
+                RowLayout
+                {
+                    anchors.fill: parent
+                    spacing: 0
+
+                    Button
+                    {
+                        id: menuButton
+                        icon.name: "menu"
+                        Layout.minimumHeight: 50
+                        Layout.minimumWidth: 50
+                        Layout.preferredWidth: 50
+                        Layout.rightMargin: 6
+                        Layout.leftMargin: 6
+
+                        opacity: 1
+                        onClicked:
+                        {
+                            if(menuBox.state === 'open')
+                            {
+                                menuBox.state = ""
+                                settingsPanel.state === 'open' ? settingsPanel.state = "" : 0;
+                                settingsButton.checked = false
+                            }
+                            else
+                                menuBox.state = 'open';
+
+                        }
+                        checked: false;
+                        checkable: true;
+
+                        transitions: Transition {
+                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                        }
+                    }
+
+                    Button
+                    {
+                        id: importFileButton
+                        icon.name: "unknown-document"
+
+                        Layout.minimumHeight: 50
+                        Layout.minimumWidth: 50
+                        Layout.preferredWidth: 50
+                        Layout.rightMargin: 6
+
+                        onClicked:
+                        {
+                            if(!fileDialog.visible)
+                                fileDialog.open();
+
+                            menuBox.state = "";
+                        }
+                        opacity: 0
+
+                        transitions: Transition {
+                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                        }
+                    }
+
+                    ComboBox
+                    {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 100
+                        Layout.preferredWidth: 200
+                        Layout.minimumHeight: 50
+                        Layout.rightMargin: 6
+
+                        textRole: "description"
+
+                        id: mapSelector
+                        height: 50
+
+                        model: view.map.supportedMapTypes
+
+                        onActivated:
+                        {
+                            view.map.activeMapType = view.map.supportedMapTypes[currentIndex]
+                            menuBox.state = ""
+                        }
+                        opacity: 0
+
+                        transitions: Transition {
+                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                        }
+                    }
+
+                    Button
+                    {
+                        id: settingsButton
+                        icon.name: "settings"
+
+                        Layout.minimumHeight: 50
+                        Layout.minimumWidth: 50
+                        Layout.preferredWidth: 50
+                        Layout.rightMargin: 6
+
+                        checkable: true
+                        checked: false
+
+                        states:
+                        [
+                            State {
+                                name: "open"
+                                PropertyChanges
+                                {
+                                    settingsPanel.state: "open"
+                                    settingsPanel.opacity: 1
+                                }
+                            }
+                        ]
+
+                        onClicked:
+                        {
+                            settingsPanel.state === 'open' ? settingsPanel.state = "" : settingsPanel.state = 'open';
+                        }
+                        opacity: 0
+
+                        transitions: Transition {
+                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                        }
+                    }
+                }
+                transitions: Transition {
+                    PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                }
+            }
+
+            Rectangle
+            {
+                id: settingsPanel
+                Layout.fillHeight: true
+                Layout.preferredWidth: 0
+                Layout.minimumHeight: 0
+                Layout.minimumWidth: 0
+                Layout.rightMargin: 6
+                Layout.topMargin: 6
+                Layout.bottomMargin: 6
+                Layout.alignment: Qt.AlignTop
+                color: "#88000000"
+
+                states:
+                [
+                    State
+                    {
+                        name: "open"
+                        PropertyChanges
+                        {
+                            settingsPanel.width: 646 < settingsPanel.parent.width ? 646 : settingsPanel.parent.width
+                        }
+                    }
+                ]
+
+                transitions: Transition {
+                    PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                }
             }
         }
     }
@@ -217,4 +382,30 @@ Rectangle
         // }
     }
 
+    onWidthChanged:
+    {
+        onResize()
+    }
+
+    onHeightChanged:
+    {
+        onResize()
+    }
+
+    function onResize()
+    {
+        if(!changing)
+        {
+            changing = true
+
+            var menuState = menuBox.state
+            var settingsState = settingsPanel.state
+            menuBox.state = ""
+            settingsPanel.state = ""
+            menuBox.state = menuState
+            settingsPanel.state = settingsState
+
+            changing = false
+        }
+    }
 }
