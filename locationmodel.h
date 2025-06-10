@@ -2,6 +2,8 @@
 #define LOCATIONMODEL_H
 
 #include <QObject>
+#include <QFuture>
+#include <QFutureSynchronizer>
 #include <QHash>
 #include <QVector>
 #include <QAbstractListModel>
@@ -33,22 +35,23 @@ struct Sector
     LocationDataNode *last = nullptr;
 
     quint64 locations;
+    bool updated = false;
+    QMutex mutex;
 };
 
 struct LocationData
 {
-    QString name;
-    QString styleTag;
-    QString description;
-    int open = 0;
-    QGeoCoordinate coordinates;
-    qint64 clusterCount = 1;
-
-    QString type;
-    QString encryption;
-    QDateTime timestamp;
     qreal accuracy = 0;
+    qint64 clusterCount = 1;
+    QGeoCoordinate coordinates;
+    QString description;
+    QString encryption;
+    QString name;
+    int open = 0;
     qreal signal = 0;
+    QString styleTag;
+    QString type;
+    QDateTime timestamp;
 };
 
 Q_DECLARE_METATYPE(LocationData)
@@ -61,6 +64,8 @@ struct LocationDataNode
     LocationDataNode(const LocationData &data) { this->data = data; }
 };
 
+Q_DECLARE_METATYPE(LocationDataNode)
+
 class LocationModel : public QAbstractListModel
 {
     QML_ELEMENT
@@ -72,7 +77,12 @@ public:
         NameRole,
         StyleRole,
         DescriptionRole,
-        OpenNetworksRole
+        OpenNetworksRole,
+        TypeRole,
+        EncryptionRole,
+        TimestampRole,
+        AccuracyRole,
+        SignalRole
     };
 
     Q_ENUM(LocationDataRole)
@@ -85,9 +95,6 @@ public:
 
     QHash<int, QByteArray> roleNames() const override;
 
-    void setLocations(const QVector<LocationData> &locations);
-    void setLocation(const LocationData &location);
-    Q_INVOKABLE void getLocations(const QGeoCoordinate &center, const qreal &distanceFrom, const qreal &precision);
     void clear();
     double logScale(double percentage, double min = 10, double max = 500000.0);
 
@@ -98,6 +105,9 @@ public:
     void setProgress(qreal progress);
 
     void append(const LocationData &data);
+    void sort();
+    Q_INVOKABLE void save();
+    Q_INVOKABLE void load(QString database);
 
     quint64 totalPointsOfInterest() const;
     void setTotalPointsOfInterest(quint64 totalPointsOfInterest);
@@ -111,8 +121,36 @@ public:
     quint64 wifiPointsOfInterest() const;
     void setWifiPointsOfInterest(quint64 wifiPointsOfInterest);
 
+    QString database() const;
+    void setDatabase(const QString &database);
+
+    QStringList availableDatabases() const;
+    void setAvailableDatabases(const QStringList &availableDatabases);
+
+    Q_INVOKABLE void resetDatabase();
+    Q_INVOKABLE void createDatabase(QString name);
+
+    QString errorMessage() const;
+    void setErrorMessage(const QString &errorMessage);
+
+    QString errorTitle() const;
+    void setErrorTitle(const QString &errorTitle);
+
+    QString loadingTitle() const;
+    void setLoadingTitle(const QString &loadingTitle);
+
+    QString loadedDatabase() const;
+    void setLoadedDatabase(const QString &loadedDatabase);
+
+public slots:
+    Q_INVOKABLE void getPointsInRect(QGeoShape area, qreal zoomLevel);
+
+private slots:
+    void updateProgress();
+    void errorOccurred(QString title, QString message);
+
 signals:
-    void error(QString title, QString message);
+    void error();
     void progressChanged();
 
     void totalPointsOfInterestChanged();
@@ -122,17 +160,43 @@ signals:
     void cellularPointsOfInterestChanged();
 
     void wifiPointsOfInterestChanged();
+    void loadingFinished();
+    void loadingStarted();
+
+    void databaseChanged();
+
+    void availableDatabasesChanged();
+
+    void errorMessageChanged();
+
+    void errorTitleChanged();
+
+    void loadingTitleChanged();
+
+    void loadedDatabaseChanged();
 
 private:
-    //Sector m_sectors[180][360];
+    QString m_database = "default";
+    QString m_loadedDatabase = "default";
+    QStringList m_availableDatabases { "default" };
+
+    Sector m_sectors[360][180];
+    bool m_loading = false;
+
+    QFutureWatcher<void> watcher;
 
     bool m_debug = false;
     void resetDataModel();
+    void startLoading(QString title);
+    void endLoading();
     void startUpdateTimer();
+    void stopUpdateTimer();
+    QTimer *createUpdateTimer();
 
     QMutex m_threadMutex;
     QVector<LocationData> m_filteredData;
     qreal m_progress = 0;
+    QString m_loadingTitle = "Loading";
     QTimer *m_updateTimer = nullptr;
 
     LocationDataNode *m_headNode = nullptr;
@@ -144,11 +208,25 @@ private:
     quint64 m_cellularPointsOfInterest = 0;
     quint64 m_wifiPointsOfInterest = 0;
 
+    quint64 m_totalPointsOfInterestTemp = 0;
+    quint64 m_bluetoothPointsOfInterestTemp = 0;
+    quint64 m_cellularPointsOfInterestTemp = 0;
+    quint64 m_wifiPointsOfInterestTemp = 0;
+
+    QString m_errorMessage;
+    QString m_errorTitle;
+
     Q_PROPERTY(qreal progress READ progress WRITE setProgress NOTIFY progressChanged FINAL)
     Q_PROPERTY(quint64 totalPointsOfInterest READ totalPointsOfInterest WRITE setTotalPointsOfInterest NOTIFY totalPointsOfInterestChanged FINAL)
     Q_PROPERTY(quint64 bluetoothPointsOfInterest READ bluetoothPointsOfInterest WRITE setBluetoothPointsOfInterest NOTIFY bluetoothPointsOfInterestChanged FINAL)
     Q_PROPERTY(quint64 cellularPointsOfInterest READ cellularPointsOfInterest WRITE setCellularPointsOfInterest NOTIFY cellularPointsOfInterestChanged FINAL)
     Q_PROPERTY(quint64 wifiPointsOfInterest READ wifiPointsOfInterest WRITE setWifiPointsOfInterest NOTIFY wifiPointsOfInterestChanged FINAL)
+    Q_PROPERTY(QString database READ database WRITE setDatabase NOTIFY databaseChanged FINAL)
+    Q_PROPERTY(QStringList availableDatabases READ availableDatabases WRITE setAvailableDatabases NOTIFY availableDatabasesChanged FINAL)
+    Q_PROPERTY(QString errorMessage READ errorMessage WRITE setErrorMessage NOTIFY errorMessageChanged FINAL)
+    Q_PROPERTY(QString errorTitle READ errorTitle WRITE setErrorTitle NOTIFY errorTitleChanged FINAL)
+    Q_PROPERTY(QString loadingTitle READ loadingTitle WRITE setLoadingTitle NOTIFY loadingTitleChanged FINAL)
+    Q_PROPERTY(QString loadedDatabase READ loadedDatabase WRITE setLoadedDatabase NOTIFY loadedDatabaseChanged FINAL)
 };
 
 Q_DECLARE_METATYPE(LocationModel)

@@ -3,11 +3,44 @@
 LocationModel::LocationModel(QObject *parent)
     : QAbstractListModel{parent}
 {
+
+    m_updateTimer = new QTimer;
+    m_updateTimer->setInterval(10);
+
+    connect(m_updateTimer, &QTimer::timeout, this, &LocationModel::updateProgress);
+
+    QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    QStringList databases = databaseDirectory.entryList(QDir::Dirs | QDir::NoSymLinks | QDir::NoDotAndDotDot, QDir::Name);
+
+    if(!databases.contains("default"))
+    {
+        createDatabase("default");
+        databases.append("default");
+    }
+
+    setAvailableDatabases(databases);
 }
 
 LocationModel::~LocationModel()
 {
+    if(m_updateTimer)
+        delete m_updateTimer;
 
+    for(int i = 0; i < 360; ++i)
+    {
+        for(int p = 0; p < 180; ++p)
+        {
+            LocationDataNode *node = m_sectors[i][p].head;
+
+            while(node)
+            {
+                LocationDataNode *temp = node;
+                node = node->next;
+
+                delete temp;
+            }
+        }
+    }
 }
 
 int LocationModel::rowCount(const QModelIndex &parent) const
@@ -42,6 +75,21 @@ QVariant LocationModel::data(const QModelIndex &index, int role) const
     case OpenNetworksRole:
         data = QVariant::fromValue<int>(m_filteredData[index.row()].open);
         break;
+    case TypeRole:
+        data = QVariant::fromValue<QString>(m_filteredData[index.row()].type);
+        break;
+    case EncryptionRole:
+        data = QVariant::fromValue<QString>(m_filteredData[index.row()].encryption);
+        break;
+    case TimestampRole:
+        data = QVariant::fromValue<qreal>(m_filteredData[index.row()].timestamp.toMSecsSinceEpoch());
+        break;
+    case AccuracyRole:
+        data = QVariant::fromValue<qreal>(m_filteredData[index.row()].accuracy);
+        break;
+    case SignalRole:
+        data = QVariant::fromValue<qreal>(m_filteredData[index.row()].signal);
+        break;
     }
 
     return data;
@@ -54,176 +102,15 @@ QHash<int, QByteArray> LocationModel::roleNames() const
         { NameRole, "name" },
         { StyleRole, "style" },
         { DescriptionRole, "description" },
-        { OpenNetworksRole, "open" }
+        { OpenNetworksRole, "open" },
+        { TypeRole, "type" },
+        { EncryptionRole, "encryption" },
+        { TimestampRole, "timestamp" },
+        { AccuracyRole, "accuracy" },
+        { SignalRole, "signal" }
     };
 
     return roleMap;
-}
-
-void LocationModel::setLocations(const QVector<LocationData> &locations)
-{
-    clear();
-
-    // qint64 startData = m_data.count() > 0 ? m_data.count() - 1 : 0;
-    // qint64 endData = (m_data.count() + locations.count()) > 0 ? (m_data.count() + locations.count()) - 1 : 0;
-
-    // beginInsertRows(QModelIndex(), startData, endData);
-    //m_data.append(locations);
-    // endInsertRows();
-
-    // QList<int> roles { LocationRole, NameRole, StyleRole, DescriptionRole, OpenNetworksRole };
-    // const QModelIndex start = index(0, 0);
-    // const QModelIndex end = index(m_data.count() - 1, 0);
-
-    // emit dataChanged(start, end, roles);
-}
-
-void LocationModel::setLocation(const LocationData &location)
-{
-    *&m_lastNode = new LocationDataNode;
-}
-
-void LocationModel::getLocations(const QGeoCoordinate &center, const qreal &distanceFrom, const qreal &precision)
-{
-    auto result = QtConcurrent::run([this, center, distanceFrom, precision] {
-        if(!m_threadMutex.tryLock(QDeadlineTimer(10)))
-            return;
-
-        qreal timeStart = QDateTime::currentMSecsSinceEpoch();
-
-        //reset the previous data
-        beginResetModel();
-        m_filteredData.clear();
-        endResetModel();
-
-        //TODO: Group data to viewport with distance from first
-        LocationDataNode *currentNode = m_headNode;
-        LocationDataNode *nodesInViewport = nullptr;
-        LocationDataNode *viewportNodesHead = nullptr;
-
-        quint64 nodesInViewportLength = 0;
-
-        while(currentNode)
-        {
-            QGeoCoordinate dataCoordinate(currentNode->data.coordinates.latitude(), currentNode->data.coordinates.longitude());
-            qreal distance = center.distanceTo(dataCoordinate);
-
-            if(distance <= distanceFrom)
-            {
-                if(!viewportNodesHead)
-                {
-                    viewportNodesHead = new LocationDataNode;
-                    nodesInViewport = viewportNodesHead;
-                }
-                else
-                {
-                    nodesInViewport->next = new LocationDataNode;
-                    nodesInViewport = nodesInViewport->next;
-                }
-
-                nodesInViewport->data = currentNode->data;
-                ++nodesInViewportLength;
-            }
-
-            currentNode = currentNode->next;
-        }
-
-        //reset head for nodes in viewport
-        nodesInViewport = viewportNodesHead;
-
-        //verify (DEBUG)
-        if(m_debug)
-        {
-            quint64 verified = 0;
-            while(nodesInViewport)
-            {
-                ++verified;
-                nodesInViewport = nodesInViewport->next;
-            }
-
-            //reset head for use
-            nodesInViewport = viewportNodesHead;
-
-            //report status
-            qDebug() << "Verified" << verified << "of" << nodesInViewportLength;
-        }
-
-        //group POI clusters
-        qreal clusterDistance = logScale(precision);
-        LocationDataNode *viewportNodeIteratorA = nodesInViewport;
-        quint64 viewportNodeRemovals = 0;
-
-        while(viewportNodeIteratorA)
-        {
-            LocationDataNode *viewportNodeIteratorB = viewportNodeIteratorA->next;
-            LocationDataNode *viewportNodeIteratorC = viewportNodeIteratorA; //last referenced for splicing
-
-            while(viewportNodeIteratorB)
-            {
-                QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.latitude(), viewportNodeIteratorA->data.coordinates.longitude());
-                QGeoCoordinate coordB(viewportNodeIteratorB->data.coordinates.latitude(), viewportNodeIteratorB->data.coordinates.longitude());
-                qreal coordDistance = coordA.distanceTo(coordB);
-
-                if(coordDistance <= clusterDistance)
-                {
-                    viewportNodeIteratorC->next = viewportNodeIteratorB->next;
-                    delete viewportNodeIteratorB;
-
-                    --nodesInViewportLength;
-                    viewportNodeIteratorB = viewportNodeIteratorC->next;
-
-                    continue;
-                }
-
-                viewportNodeIteratorC = viewportNodeIteratorB;
-                viewportNodeIteratorB = viewportNodeIteratorB->next;
-            }
-
-            viewportNodeIteratorA = viewportNodeIteratorA->next;
-        }
-
-        //reset head for nodes in viewport
-        nodesInViewport = viewportNodesHead;
-
-        //verify (DEBUG)
-        if(m_debug)
-        {
-            quint64 verified = 0;
-            while(nodesInViewport)
-            {
-                ++verified;
-                nodesInViewport = nodesInViewport->next;
-            }
-
-            //reset head for use
-            nodesInViewport = viewportNodesHead;
-
-            //report status
-            qDebug() << "Groups:" << verified << nodesInViewportLength;
-        }
-
-        //move filtered items to the vector and clean up the nodes along the way
-        quint64 row = 0;
-        beginInsertRows(QModelIndex(), 0, nodesInViewportLength - 1);
-        while(nodesInViewport)
-        {
-            // beginInsertRows(QModelIndex(), row, row);
-            LocationData data = nodesInViewport->data;
-            m_filteredData.append(data);
-
-            LocationDataNode *tempNode = nodesInViewport;
-            nodesInViewport = nodesInViewport->next;
-            delete tempNode;
-            // ++row;
-        }
-        endInsertRows();
-
-        m_threadMutex.unlock();
-
-        qreal endTime = QDateTime::currentMSecsSinceEpoch();
-
-        qDebug() << "Sorted nodes in" << endTime - timeStart << "ms";
-    });
 }
 
 void LocationModel::clear()
@@ -241,6 +128,7 @@ double LocationModel::logScale(double percentage, double min, double max)
 
 void LocationModel::parseKML(QString fileName, bool append)
 {
+    startLoading(QString("Importing file into database `%1`").arg(m_loadedDatabase));
 
     auto result = QtConcurrent::run([this, fileName, append] {
 
@@ -253,30 +141,31 @@ void LocationModel::parseKML(QString fileName, bool append)
         if(!file.exists())
         {
             qDebug() << "Couldnt open file " + file.errorString();
-            emit error("File Error", "Could not open file due to invalid filename or path.");
+            emit errorOccurred("File Error", "Could not open file due to invalid filename or path.");
             return;
         }
 
         if(!file.open(QFile::ReadOnly))
         {
             qDebug() << "Couldnt open file " + file.errorString();
-            emit error("File Error", "Could not open file. " + file.errorString());
+            emit errorOccurred("File Error", "Could not open file. " + file.errorString());
             return;
         }
 
         if(!append)
             resetDataModel();
 
-        startUpdateTimer();
-
         QXmlStreamReader xml(&file);
         quint64 pois = 0;
         quint64 bluetooth = 0;
         quint64 cellular = 0;
         quint64 wifi = 0;
+        quint64 loop = 0;
 
         while(!xml.atEnd())
         {
+            m_progress = static_cast<qreal>(file.pos()) / file.size();
+
             xml.readNextStartElement();
             QString elementName = xml.name().toString().toLower();
             if(elementName.toLower() == "placemark")
@@ -322,10 +211,12 @@ void LocationModel::parseKML(QString fileName, bool append)
                                 {
                                     if(value.toLower() == "wifi")
                                         ++wifi;
-                                    else if(value.toLower() == "bluetooth")
+                                    else if(value.toLower() == "bt" || value.toLower() == "ble")
                                         ++bluetooth;
-                                    else if(value.toLower() == "cellular")
+                                    else if(value.toLower() == "lte" || value.toLower() == "nr")
                                         ++cellular;
+                                    else
+                                        qDebug() << "Uknown Type Key" << value;
 
                                     data.type = value;
                                 }
@@ -389,26 +280,25 @@ void LocationModel::parseKML(QString fileName, bool append)
                         data.open = xml.readElementText().toInt();
                 }
 
-                if(!m_headNode)
-                {
-                    m_headNode = new LocationDataNode;
-                    m_lastNode = m_headNode;
-                }
-                else
-                {
-                    m_lastNode->next = new LocationDataNode;
-                    m_lastNode = m_lastNode->next;
-                }
+                // if(!m_headNode)
+                // {
+                //     m_headNode = new LocationDataNode;
+                //     m_lastNode = m_headNode;
+                // }
+                // else
+                // {
+                //     m_lastNode->next = new LocationDataNode;
+                //     m_lastNode = m_lastNode->next;
+                // }
 
-                m_lastNode->data = data;
+                // m_lastNode->data = data;
 
-                // this->append(data);
+                this->append(data);
 
                 ++m_nodeLength;
             }
         }
 
-        m_updateTimer->stop();
         file.close();
 
         setTotalPointsOfInterest(m_nodeLength);
@@ -439,7 +329,12 @@ void LocationModel::parseKML(QString fileName, bool append)
 
         m_threadMutex.unlock();
     });
+    watcher.setFuture(result);
 
+    connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        endLoading();
+        save();
+    });
 }
 
 void LocationModel::openFile(QString fileName, bool append)
@@ -463,8 +358,8 @@ void LocationModel::setProgress(qreal progress)
     if (qFuzzyCompare(m_progress, progress))
         return;
 
-    if(progress > 100)
-        progress = 100;
+    if(progress > 1)
+        progress = 1;
     else if(progress < 0)
         progress = 0;
 
@@ -473,44 +368,478 @@ void LocationModel::setProgress(qreal progress)
 
 void LocationModel::append(const LocationData &data)
 {
-    // int latitudeIndex = std::round(data.coordinates.latitude() + 90);
-    // int longitudeIndex = std::round(data.coordinates.longitude() + 180);
+    int latitudeIndex = std::floor(data.coordinates.latitude() + 90);
+    int longitudeIndex = std::floor(data.coordinates.longitude() + 180);
 
-    // ++m_sectors[latitudeIndex][longitudeIndex].locations;
+    m_sectors[longitudeIndex][latitudeIndex].mutex.lock();
 
-    // //construct the first POI for the sector
-    // if(!m_sectors[latitudeIndex][longitudeIndex].head)
-    // {
-    //     m_sectors[latitudeIndex][longitudeIndex].head = new LocationDataNode;
-    //     m_sectors[latitudeIndex][longitudeIndex].last = m_sectors[longitudeIndex][latitudeIndex].head;
+    ++m_sectors[longitudeIndex][latitudeIndex].locations;
 
-    //     m_sectors[latitudeIndex][longitudeIndex].head->data = data;
+    //construct the first POI for the sector
+    if(!m_sectors[longitudeIndex][latitudeIndex].head)
+    {
+        m_sectors[longitudeIndex][latitudeIndex].head = new LocationDataNode(data);
+        m_sectors[longitudeIndex][latitudeIndex].last = m_sectors[longitudeIndex][latitudeIndex].head;
+    }
 
-    //     return;
-    // }
+    //otherwise add it to the end of the element
+    else
+    {
+        m_sectors[longitudeIndex][latitudeIndex].last->next = new LocationDataNode(data);
+        m_sectors[longitudeIndex][latitudeIndex].last = m_sectors[longitudeIndex][latitudeIndex].last->next;
+    }
 
-    // QGeoCoordinate dataCoordinate(data.coordinates.latitude(),data.coordinates.longitude());
-    // qreal dataDistance = QGeoCoordinate(-90, -180).distanceTo(dataCoordinate);
+    m_sectors[longitudeIndex][latitudeIndex].updated = true;
+    m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
+}
 
-    // LocationDataNode *node = m_sectors[latitudeIndex][longitudeIndex].head;
-    // qreal nodeDistance;
+void LocationModel::sort()
+{
+    startLoading("Sorting");
 
-    // while(node->next)
-    // {
-    //     nodeDistance = QGeoCoordinate(-90, -180).distanceTo(node->next->data.coordinates);
+    watcher.disconnect();
+    watcher.setFuture(QtConcurrent::run([this](){
+        for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
+        {
+            for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
+            {
+                if(!m_sectors[longitudeIndex][latitudeIndex].updated || !m_sectors[longitudeIndex][latitudeIndex].head)
+                    continue;
 
-    //     if(nodeDistance > dataDistance)
-    //     {
-    //         LocationDataNode *nextNode = node->next;
-    //         node->next = new LocationDataNode(data);
-    //         node->next->next = nextNode;
+                m_sectors[longitudeIndex][latitudeIndex].mutex.lock();
+                setLoadingTitle(QString("Sorting Sector [%1][%2]").arg(QString::number(longitudeIndex - 180), QString::number(latitudeIndex - 90)));
 
-    //         return;
-    //     }
-    // }
+                bool op = true;
+                while(op)
+                {
+                    LocationDataNode *node = m_sectors[longitudeIndex][latitudeIndex].head;
+                    op = false;
 
-    // //new data point is the furthest
-    // node->next = new LocationDataNode(data);
+                    while(node && node->next)
+                    {
+                        LocationDataNode *nextNode = node->next;
+                        qreal nodeDistance = QGeoCoordinate(-90,-180).distanceTo(node->data.coordinates);
+                        qreal nextNodeDistance = QGeoCoordinate(-90,-180).distanceTo(node->next->data.coordinates);
+
+                        if(nodeDistance > nextNodeDistance)
+                        {
+                            node->next = nextNode->next;
+                            nextNode->next = node;
+                            op = true;
+                        }
+
+                        node = node->next;
+                    }
+                }
+
+                m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
+            }
+        }
+    }));
+
+    watcher.connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        endLoading();
+    });
+}
+
+void LocationModel::save()
+{
+    startLoading("Saving");
+
+    watcher.disconnect();
+    watcher.setFuture(QtConcurrent::run([this](){
+        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + m_loadedDatabase);
+
+        quint64 totalOps = 360 * 180;
+        for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
+        {
+            for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
+            {
+                if(!m_sectors[longitudeIndex][latitudeIndex].updated || !m_sectors[longitudeIndex][latitudeIndex].head)
+                    continue;
+
+                if(!m_sectors[longitudeIndex][latitudeIndex].mutex.tryLock(1250))
+                    return;
+
+                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString::number(longitudeIndex) + QDir::separator() + QString::number(latitudeIndex) + QDir::separator() + "0.csv");
+
+                if(!file.open(QFile::ReadWrite))
+                {
+                    errorOccurred("Save Database Error", file.errorString());
+                    return;
+                }
+
+                LocationDataNode *node = m_sectors[longitudeIndex][latitudeIndex].head;
+
+                while(node)
+                {
+                    LocationData data = node->data;
+                    QString fileData;
+
+                    fileData = QString::number(data.coordinates.longitude()) + "," + QString::number(data.coordinates.latitude()) + ",";
+                    fileData += data.encryption + "," + data.description + "," + data.name + "," + data.type + ",";
+                    fileData += QString::number(data.accuracy) + "," + QString::number(data.signal) + ",";
+                    fileData += QString::number(data.open) + "," + QString::number(data.timestamp.toMSecsSinceEpoch()) + "," + data.styleTag;
+
+                    node = node->next;
+
+                    file.write(QUrl::toPercentEncoding(fileData) + "\n");
+                }
+
+                file.close();
+
+                m_progress = (longitudeIndex + latitudeIndex) / totalOps;
+
+                m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
+            }
+        }
+    }));
+
+    watcher.connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        endLoading();
+    });
+}
+
+void LocationModel::load(QString database)
+{
+    startLoading("Loading");
+
+    m_bluetoothPointsOfInterestTemp = m_bluetoothPointsOfInterest;
+    m_wifiPointsOfInterestTemp = m_wifiPointsOfInterest;
+    m_totalPointsOfInterestTemp = m_totalPointsOfInterest;
+    m_cellularPointsOfInterestTemp = m_cellularPointsOfInterest;
+
+    watcher.disconnect();
+    watcher.setFuture(QtConcurrent::run([this, database](){
+        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + database);
+
+        quint128 totalOps = 0;
+
+        for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
+        {
+            for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
+            {
+                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString::number(longitudeIndex) + QDir::separator() + QString::number(latitudeIndex) + QDir::separator() + "0.csv");
+                totalOps += file.size();
+            }
+        }
+
+        quint128 completedOps = 0;
+
+        for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
+        {
+            for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
+            {
+                m_sectors[longitudeIndex][latitudeIndex].mutex.lock();
+
+                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString::number(longitudeIndex) + QDir::separator() + QString::number(latitudeIndex) + QDir::separator() + "0.csv");
+
+                if(!file.open(QFile::ReadWrite))
+                {
+                    errorOccurred("Load Database Error", file.fileName() + "\n" + file.errorString());
+                    return;
+                }
+
+                LocationDataNode *node = m_sectors[longitudeIndex][latitudeIndex].head;
+
+                while(!file.atEnd())
+                {
+                    QString line = QUrl::fromPercentEncoding(file.readLine());
+                    QStringList segments = line.split(',');
+
+                    LocationData data {
+                        segments[6].toDouble(), //accuracy
+                        1, //cluster count
+                        QGeoCoordinate(segments[1].toDouble(), segments[0].toDouble()),
+                        segments[3],
+                        segments[2],
+                        segments[4],
+                        segments[8].toInt(),
+                        segments[7].toDouble(),
+                        segments[10],
+                        segments[5],
+                        QDateTime::fromMSecsSinceEpoch(segments[9].toLongLong())
+                    };
+
+                    if(data.type.toLower() == "wifi")
+                        ++m_wifiPointsOfInterestTemp;
+                    else if(data.type.toLower() == "bt" || data.type.toLower() == "ble")
+                        ++m_bluetoothPointsOfInterestTemp;
+                    else if(data.type.toLower() == "lte" || data.type.toLower() == "nr" || data.type.toLower() == "gsm")
+                        ++m_cellularPointsOfInterestTemp;
+                    else if(!data.type.isEmpty())
+                        qDebug() << "Uknown Type Key" << data.type;
+                    else
+                    {
+                        data.type = "WIFI";
+                        ++m_wifiPointsOfInterestTemp;
+                    }
+
+                    ++m_totalPointsOfInterestTemp;
+
+                    if(!node)
+                    {
+                        m_sectors[longitudeIndex][latitudeIndex].head = new LocationDataNode(data);
+                        node = m_sectors[longitudeIndex][latitudeIndex].head;
+                    }
+
+                    else
+                    {
+                        node->next = new LocationDataNode(data);
+                        node = node->next;
+                    }
+
+                    completedOps += file.pos();
+                }
+
+                file.close();
+
+                m_progress = completedOps / totalOps;
+
+                m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
+                setDatabase(database);
+            }
+        }
+    }));
+
+    watcher.connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        setTotalPointsOfInterest(m_totalPointsOfInterestTemp);
+        setBluetoothPointsOfInterest(m_bluetoothPointsOfInterestTemp);
+        setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
+        setCellularPointsOfInterest(m_cellularPointsOfInterestTemp);
+        endLoading();
+    });
+}
+
+//this should be able to go into the class, but QtConcurrent::run
+LocationDataNode *groupPoints(LocationDataNode *node, QGeoShape area,  qreal clusterDistance, quint64 &count)
+{
+    //copy for clustering
+    LocationDataNode *nodeToCopy = node;
+    LocationDataNode *nodeToWrite = nullptr;
+    LocationDataNode *copiedHead = nullptr;
+
+    while(nodeToCopy)
+    {
+        if(area.contains(nodeToCopy->data.coordinates))
+        {
+            if(!nodeToWrite)
+            {
+                nodeToWrite = new LocationDataNode(nodeToCopy->data);
+                copiedHead = nodeToWrite;
+            }
+            else
+            {
+                nodeToWrite->next = new LocationDataNode(nodeToCopy->data);
+                nodeToWrite = nodeToWrite->next;
+            }
+
+            ++count;
+        }
+
+        nodeToCopy = nodeToCopy->next;
+    }
+
+    //group POI clusters
+    LocationDataNode *viewportNodeIteratorA = copiedHead;
+    quint64 viewportNodeRemovals = 0;
+
+    if(copiedHead)
+        bool stop = true;
+
+
+    while(viewportNodeIteratorA)
+    {
+        LocationDataNode *viewportNodeIteratorB = viewportNodeIteratorA->next;
+        LocationDataNode *viewportNodeIteratorC = viewportNodeIteratorA; //last referenced for splicing
+
+        while(viewportNodeIteratorB)
+        {
+            QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.latitude(), viewportNodeIteratorA->data.coordinates.longitude());
+            QGeoCoordinate coordB(viewportNodeIteratorB->data.coordinates.latitude(), viewportNodeIteratorB->data.coordinates.longitude());
+            qreal coordDistance = coordA.distanceTo(coordB);
+
+            if(coordDistance <= clusterDistance)
+            {
+                viewportNodeIteratorC->next = viewportNodeIteratorB->next;
+                delete viewportNodeIteratorB;
+
+                viewportNodeIteratorB = viewportNodeIteratorC->next;
+
+                --count;
+
+                continue;
+            }
+
+            viewportNodeIteratorC = viewportNodeIteratorB;
+            viewportNodeIteratorB = viewportNodeIteratorB->next;
+        }
+
+        viewportNodeIteratorA = viewportNodeIteratorA->next;
+    }
+
+    return copiedHead;
+}
+
+void LocationModel::getPointsInRect(QGeoShape area, qreal zoomLevel)
+{
+    auto result = QtConcurrent::run([this, area, zoomLevel]
+    {
+        if(!m_threadMutex.tryLock(QDeadlineTimer(250)))
+            return;
+
+        qreal timeStart = QDateTime::currentMSecsSinceEpoch();
+
+        QFutureSynchronizer<LocationDataNode*> watcher;
+        QList<QFuture<LocationDataNode*>> futures;
+
+        QGeoPolygon poly = area;
+
+        //QGeoPolygon seems to be constructed from bottom right, to bottom left, to top left to top right
+        int latitudeStartIndex = poly.coordinateAt(1).latitude() + 90;
+        int latitudeEndIndex = poly.coordinateAt(2).latitude() + 90;
+        int longitudeStartIndex = poly.coordinateAt(1).longitude() + 180;
+        int longitudeEndIndex = poly.coordinateAt(0).longitude() + 180;
+
+        LocationDataNode *nodes = nullptr;
+        LocationDataNode *headNode = nullptr;
+
+        quint64 totalNodes = 0;
+
+        //get points in the bounding rect
+        for(int x = 0; x < 360; ++x)
+        {
+            for(int y = 0; y < 180; ++y)
+            {
+                if(x >= longitudeStartIndex && x <= longitudeEndIndex && y >= latitudeStartIndex && y <= latitudeEndIndex)
+                {
+                    quint64 count = 0;
+                    if(!nodes)
+                    {
+                        nodes = groupPoints(m_sectors[x][y].head, area, logScale(zoomLevel), count);
+                        headNode = nodes;
+                    }
+
+                    else
+                        nodes->next = groupPoints(m_sectors[x][y].head, area, logScale(zoomLevel), count);
+
+                    while(nodes && nodes->next)
+                        nodes = nodes->next;
+
+                    totalNodes += count;
+
+                    // QFuture<LocationDataNode*> future = QtConcurrent::run(groupPoints, m_sectors[x][y].head, area, logScale(zoomLevel));
+                    // watcher.addFuture(future);
+                }
+            }
+        }
+
+        watcher.waitForFinished();
+
+        resetDataModel();
+
+        quint64 index = 0;
+        beginInsertRows(QModelIndex(), 0, totalNodes - 1);
+        while(headNode)
+        {
+            LocationDataNode *nodeToDelete = headNode;
+            m_filteredData.append(headNode->data);
+            headNode = headNode->next;
+
+            delete nodeToDelete;
+        }
+        endInsertRows();
+
+        // for(const QFuture<LocationDataNode*> &future : std::as_const(futures))
+        // {
+        //     LocationDataNode *futureNodes = future.result();
+
+        //     if(!futureNodes)
+        //         continue;
+
+        //     while(futureNodes)
+        //     {
+        //         quint64 start = m_filteredData.count() > 0 ? m_filteredData.count() - 1 : 0;
+        //         quint64 end = m_filteredData.count() > 0 ? m_filteredData.count() : 1;
+
+        //         beginInsertRows(QModelIndex(), start, end);
+        //         m_filteredData.append(futureNodes->data);
+        //         endInsertRows();
+
+        //         LocationDataNode *tempNode = futureNodes;
+        //         futureNodes = futureNodes->next;
+
+        //         delete tempNode;
+        //     }
+        // }
+
+        qreal endTime = QDateTime::currentMSecsSinceEpoch();
+
+        m_threadMutex.unlock();
+
+        qDebug() << "Sorted nodes" << totalNodes << "in" << endTime - timeStart << "ms";
+    });
+}
+
+void LocationModel::updateProgress()
+{
+    if(!m_loading)
+    {
+        qDebug() << "Stopping";
+        m_updateTimer->stop();
+        emit loadingFinished();
+    }
+
+    emit progressChanged();
+}
+
+void LocationModel::errorOccurred(QString title, QString message)
+{
+    m_errorMessage = message;
+    m_errorTitle = title;
+
+    emit error();
+}
+
+QString LocationModel::loadedDatabase() const
+{
+    return m_loadedDatabase;
+}
+
+void LocationModel::setLoadedDatabase(const QString &loadedDatabase)
+{
+    if (m_loadedDatabase == loadedDatabase)
+        return;
+    m_loadedDatabase = loadedDatabase;
+    emit loadedDatabaseChanged();
+}
+
+QStringList LocationModel::availableDatabases() const
+{
+    return m_availableDatabases;
+}
+
+void LocationModel::setAvailableDatabases(const QStringList &availableDatabases)
+{
+    if (m_availableDatabases == availableDatabases)
+        return;
+
+    m_availableDatabases = availableDatabases;
+    emit availableDatabasesChanged();
+}
+
+QString LocationModel::database() const
+{
+    return m_database;
+}
+
+void LocationModel::setDatabase(const QString &database)
+{
+    if (m_database == database)
+        return;
+
+    m_database = database;
+    emit databaseChanged();
 }
 
 void LocationModel::resetDataModel()
@@ -518,64 +847,267 @@ void LocationModel::resetDataModel()
     //signal model reset
     beginResetModel();
 
-    setTotalPointsOfInterest(0);
-    setBluetoothPointsOfInterest(0);
-    setCellularPointsOfInterest(0);
-
-    //iterate over nodes and delete them as we go
-    while(m_headNode)
-    {
-        LocationDataNode *currentNode = m_headNode;
-        m_headNode = currentNode->next;
-
-        delete currentNode;
-
-        //decrease node length as a way to verify we were successful
-        --m_nodeLength;
-    }
-
-    //sectored data
-    // for(int latitude = 0; latitude < 180; ++latitude)
-    // {
-    //     for(int longitude = 0; longitude < 360; ++longitude)
-    //     {
-    //         LocationDataNode *node = m_sectors[longitude][latitude].head;
-
-    //         while(node)
-    //         {
-    //             LocationDataNode *currentNode = node;
-    //             node = node->next;
-
-    //             delete currentNode;
-    //         }
-    //     }
-    // }
-
     //clear the filtered data vector
     m_filteredData.clear();
 
     //signal end model reset
     endResetModel();
+}
 
-    //whoopsie
-    if(m_nodeLength)
-    {
-        qDebug() << "Location Model Reset Error";
-        errno = EIO;
-    }
+void LocationModel::startLoading(QString title)
+{
+    m_loading = true;
+    m_progress = -1;
+    setLoadingTitle(title);
+    startUpdateTimer();
+    emit loadingStarted();
+}
+
+void LocationModel::endLoading()
+{
+    m_loading = false;
+    m_progress = -1;
+    setLoadingTitle("Loading");
+    stopUpdateTimer();
+    emit loadingFinished();
+}
+
+void LocationModel::resetDatabase()
+{
+    startLoading("Resetting Database");
+    auto result = QtConcurrent::run([this](){
+        if(!m_threadMutex.tryLock(1250))
+            return;
+
+        //clear filtered data
+        if(m_filteredData.count())
+            resetDataModel();
+
+        //determine how much we have to do for progress
+        quint64 fileOps = 0;
+        quint64 memOps = 0;
+
+        for(int latitude = 0; latitude < 180; ++latitude)
+        {
+            for(int longitude = 0; longitude < 360; ++longitude)
+            {
+                LocationDataNode *node = m_sectors[longitude][latitude].head;
+
+                //only alter files with data in them for default database
+                if(node && m_loadedDatabase == "default")
+                {
+                    ++fileOps;
+
+                    memOps += m_sectors[longitude][latitude].locations;
+                }
+                else if(m_loadedDatabase != "default")
+                {
+                    ++fileOps;
+
+                    memOps += m_sectors[longitude][latitude].locations;
+                }
+            }
+        }
+
+        quint64 totalOps = fileOps + memOps;
+        quint64 completedFileOps = 0;
+        quint64 completedMemOps = 0;
+        m_progress = 0;
+
+        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + m_loadedDatabase);
+
+        //clear sectored data
+        for(int longitude = 0; longitude < 360; ++longitude)
+        {
+            QDir longitudeDirectory = databaseDirectory;
+            longitudeDirectory.cd(QString::number(longitude));
+
+            for(int latitude = 0; latitude < 180; ++latitude)
+            {
+                QDir latitudeDirectory = longitudeDirectory;
+                latitudeDirectory.cd(QString::number(latitude));
+
+                LocationDataNode *node = m_sectors[longitude][latitude].head;
+
+                //make sure only files with data are altered for the default database
+                if(node && m_loadedDatabase == "default")
+                {
+                    QFile file(latitudeDirectory.absolutePath() + QDir::separator() + QString("0.csv"));
+
+                    if(file.exists())
+                        file.remove();
+
+                    if(file.open(QFile::ReadWrite))
+                    {
+                        file.write("");
+                        file.flush();
+                        file.close();
+                    }
+                }
+
+                else if(m_loadedDatabase != "default")
+                {
+                    QFile file(latitudeDirectory.absolutePath() + QDir::separator() + QString("0.csv"));
+
+                    if(file.exists())
+                        file.remove();
+                }
+
+                //remove the directory if its not the default database
+                if(m_loadedDatabase != "default" && latitudeDirectory.exists())
+                    latitudeDirectory.rmdir(latitudeDirectory.absolutePath());
+
+                //progress = 50% file ops 50% mem ops = (completeFops / fops) * 0.5 + (completedMops / mops) * 0.5
+                m_progress = ((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5);
+
+                while(node)
+                {
+                    LocationDataNode *currentNode = node;
+                    node = node->next;
+
+                    delete currentNode;
+
+                    m_progress = ((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5);
+                }
+            }
+
+            //remove the directory if its not the default database
+            if(m_loadedDatabase != "default" && longitudeDirectory.exists())
+                longitudeDirectory.rmdir(longitudeDirectory.absolutePath());
+        }
+
+        m_threadMutex.unlock();
+
+    });
+
+    watcher.disconnect();
+    watcher.setFuture(result);
+
+    connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        endLoading();
+    });
+}
+
+void LocationModel::createDatabase(QString name)
+{
+    startLoading("Creating Database");
+
+    auto result = QtConcurrent::run([this, name](){
+        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + name);
+
+        if(databaseDirectory.exists())
+        {
+            errorOccurred("Create Database Error", "Database already exists");
+            return;
+        }
+
+        //create the root directory
+        databaseDirectory.mkpath(databaseDirectory.absolutePath());
+
+        //create sector directories
+        for(quint64 longitude = 0; longitude < 360; ++longitude)
+        {
+            for(quint64 latitude = 0; latitude < 180; ++latitude)
+            {
+                if(!databaseDirectory.mkpath(QString("%1%2%3").arg(QString::number(longitude), QDir::separator(), QString::number(latitude))))
+                {
+                    errorOccurred("Create Database Error", "Could not create required directories");
+
+                    if(longitude || latitude)
+                        databaseDirectory.rmdir(databaseDirectory.absolutePath());
+
+                    return;
+                }
+
+                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString("%1%2%3").arg(QString::number(longitude), QDir::separator(), QString::number(latitude)) + QDir::separator() + "0.csv");
+                if(!file.open(QFile::ReadWrite))
+                {
+                    errorOccurred("Create Database Error", "Could not create required files");
+
+                    if(longitude || latitude)
+                        databaseDirectory.rmdir(databaseDirectory.absolutePath());
+                }
+
+                file.write("");
+                file.flush();
+                file.close();
+            }
+        }
+
+        return;
+    });
+
+    watcher.disconnect();
+    watcher.setFuture(result);
+
+    connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        endLoading();
+    });
 }
 
 void LocationModel::startUpdateTimer()
 {
-    if(!m_updateTimer)
+    if(!m_updateTimer->isActive())
     {
-        m_updateTimer = new QTimer(this);
-        m_updateTimer->setInterval(10);
-
-        connect(m_updateTimer, &QTimer::timeout, this, [this] {emit progressChanged();});
+        QThread *origin = m_updateTimer->thread();
+        m_updateTimer->moveToThread(QThread::currentThread());
+        m_updateTimer->start();
+        m_updateTimer->moveToThread(origin);
     }
+}
 
-    m_updateTimer->start();
+void LocationModel::stopUpdateTimer()
+{
+    if(m_updateTimer->isActive())
+        m_updateTimer->stop();
+}
+
+QTimer *LocationModel::createUpdateTimer()
+{
+    QTimer *timer = new QTimer;
+    timer->setInterval(10);
+    timer->connect(timer, &QTimer::timeout,this, [this](){updateProgress();});
+
+    return timer;
+}
+
+QString LocationModel::loadingTitle() const
+{
+    return m_loadingTitle;
+}
+
+void LocationModel::setLoadingTitle(const QString &loadingTitle)
+{
+    if (m_loadingTitle == loadingTitle)
+        return;
+    m_loadingTitle = loadingTitle;
+    emit loadingTitleChanged();
+}
+
+QString LocationModel::errorTitle() const
+{
+    return m_errorTitle;
+}
+
+void LocationModel::setErrorTitle(const QString &errorTitle)
+{
+    if (m_errorTitle == errorTitle)
+        return;
+    m_errorTitle = errorTitle;
+    emit errorTitleChanged();
+}
+
+QString LocationModel::errorMessage() const
+{
+    return m_errorMessage;
+}
+
+void LocationModel::setErrorMessage(const QString &errorMessage)
+{
+    if (m_errorMessage == errorMessage)
+        return;
+    m_errorMessage = errorMessage;
+    emit errorMessageChanged();
 }
 
 quint64 LocationModel::wifiPointsOfInterest() const
@@ -600,6 +1132,7 @@ void LocationModel::setCellularPointsOfInterest(quint64 cellularPointsOfInterest
 {
     if (m_cellularPointsOfInterest == cellularPointsOfInterest)
         return;
+
     m_cellularPointsOfInterest = cellularPointsOfInterest;
     emit cellularPointsOfInterestChanged();
 }
@@ -613,6 +1146,7 @@ void LocationModel::setBluetoothPointsOfInterest(quint64 bluetoothPointsOfIntere
 {
     if (m_bluetoothPointsOfInterest == bluetoothPointsOfInterest)
         return;
+
     m_bluetoothPointsOfInterest = bluetoothPointsOfInterest;
     emit bluetoothPointsOfInterestChanged();
 }
@@ -626,6 +1160,7 @@ void LocationModel::setTotalPointsOfInterest(quint64 totalPointsOfInterest)
 {
     if (m_totalPointsOfInterest == totalPointsOfInterest)
         return;
+
     m_totalPointsOfInterest = totalPointsOfInterest;
     emit totalPointsOfInterestChanged();
 }
