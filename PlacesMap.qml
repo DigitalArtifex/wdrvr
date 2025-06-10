@@ -6,17 +6,20 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Effects
 import QtCore
 import QtPositioning
 import QtLocation
 //! [Imports]
 
-
-Rectangle
+Item
 {
     property bool append: false;
-    property bool changing: false;
+    property alias map: view.map
+    property string apikey;
+
     anchors.fill: parent
+    z: 0
 
     Rectangle
     {
@@ -25,10 +28,27 @@ Rectangle
         //! [Initialize Plugin]
         Plugin
         {
-            id: myPlugin
+            id: mapPlugin
             name: "osm"
             PluginParameter { name: "osm.useragent"; value: "wdrvr 0.1" }
-            PluginParameter { name: "osm.mapping.copyright"; value: "" }
+            PluginParameter { name: "osm.mapping.copyright"; value: "wdrvr" }
+            PluginParameter {
+                name: "osm.mapping.providersrepository.disabled"
+                value: "true"
+            }
+            PluginParameter {
+                name: "osm.mapping.providersrepository.address"
+                value: "http://maps-redirect.qt.io/osm/5.6/"
+            }
+
+            //! [Loaded From Settings]
+            PluginParameter {
+                name: "osm.mapping.highdpi_tiles"
+                value: settings.highDPIMapTiles
+            }
+            //! [Loaded From Settings]
+
+
             // PluginParameter { name: "osm.routing.host"; value: "http://osrm.server.address/viaroute" }
             // PluginParameter { name: "osm.geocoding.host"; value: "http://geocoding.server.address" }
         }
@@ -57,16 +77,25 @@ Rectangle
         {
             id: view
             anchors.fill: parent
-            map.plugin: myPlugin;
+            map.plugin: mapPlugin;
             map.center: positionSource.lastSearchPosition
             map.zoomLevel: 13
+            map.color: "#444444"
+            map.copyrightsVisible: false
+
+            // //! [Loaded From Settings]
+            map.activeMapType: map.supportedMapTypes[settings.mapType]
+            // //! [Loaded From Settings]
 
             map.onZoomLevelChanged:
             {
-                var cord = view.map.toCoordinate(Qt.point(0,0))
-                var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
-                locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
+                // var cord = view.map.toCoordinate(Qt.point(0,0))
+                // var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
+                // locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
+                locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel);
             }
+
+            map.onActiveMapTypeChanged: settings.mapType = map.supportedMapTypes.indexOf(map.activeMapType)
 
             MapItemView
             {
@@ -89,9 +118,11 @@ Rectangle
                     {
                         if(panning)
                         {
-                            var cord = view.map.toCoordinate(Qt.point(0,0))
-                            var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
-                            locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
+                            // var cord = view.map.toCoordinate(Qt.point(0,0))
+                            // var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
+                            // locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
+                            console.log(view.map.visibleRegion)
+                            locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel);
                         }
                     }
                 }
@@ -102,12 +133,12 @@ Rectangle
                     anchorPoint.x: marker.width * 0.5
                     anchorPoint.y: marker.height
 
-                    sourceItem: Column
+                    sourceItem: ColumnLayout
                     {
                         Image
                         {
                             id: marker
-                            source: "marker.png"
+                            source: "icons/win11/scalable/place-marker.svg"
 
                             ToolTip.visible: mouseArea.containsMouse
                             ToolTip.delay: 100
@@ -120,22 +151,31 @@ Rectangle
                                hoverEnabled: true
                             }
 
-                            states:
-                            [
-                                State
-                                {
-                                    when: style === '#highConfidence'
-                                    PropertyChanges {
-                                        marker.source: ""
-                                    }
-                                }
-                            ]
+                            // states:
+                            // [
+                            //     State
+                            //     {
+                            //         when: style === '#highConfidence'
+                            //         PropertyChanges {
+                            //             //marker.source: ""
+                            //         }
+                            //     },
+                            //     State
+                            //     {
+                            //         when: type === 'wifi'
+                            //         PropertyChanges {
+                            //             marker.source: 'icons/wifi.png'
+                            //         }
+                            //     }
+
+                            // ]
                         }
 
                         Text
                         {
                             text: name
                             font.bold: true
+                            anchors.leftMargin: name.width * 0.5
                         }
                     }
                 }
@@ -143,435 +183,6 @@ Rectangle
         }
 
         //! [Places MapItemView]
-        FileDialog {
-            id: fileDialog
-            currentFolder: StandardPaths.standardLocations(StandardPaths.HomeLocation)[0]
-            nameFilters: ["WiGLE XML files (*.kml)"]
-            onAccepted:
-            {
-                locationModel.openFile(selectedFile, append)
-
-                var cord = view.map.toCoordinate(Qt.point(0, view.map.height / 2), true)
-                var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2), true)
-                locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
-            }
-        }
-    }
-
-    Rectangle
-    {
-        anchors.fill: parent
-
-        width: 74
-        height: 74
-        z: 12
-        id: menuControl
-        color: "transparent"
-
-        ColumnLayout
-        {
-            anchors.fill: parent
-            z: 12
-            Rectangle
-            {
-                id: menuBox
-                // width: 62
-                // height: 62
-                color: "#88000000"
-
-                Layout.topMargin: 6
-                Layout.rightMargin: 6
-                Layout.alignment: Qt.AlignTop | Qt.AlignLeft
-                Layout.minimumHeight: 62
-                Layout.minimumWidth: 62
-                Layout.preferredWidth: 62
-
-                states:
-                [
-                    State {
-                        name: "open"
-                        PropertyChanges
-                        {
-                            menuBox.width: 640 < menuBox.parent.width ? 640 : menuBox.parent.width
-                            menuControl.width: 652 < menuControl.parent.width ? 652 : menuControl.parent.width
-                            menuButton.state: 'open'
-                            importFileButton.opacity: 1
-                            mapSelector.opacity: 1
-                            menuBox.color: "#88000000"
-                            settingsButton.opacity: 1
-                        }
-                    }
-                ]
-
-                RowLayout
-                {
-                    anchors.fill: parent
-                    spacing: 0
-
-                    Button
-                    {
-                        id: menuButton
-                        icon.name: "menu"
-                        Layout.minimumHeight: 50
-                        Layout.minimumWidth: 50
-                        Layout.preferredWidth: 50
-                        Layout.rightMargin: 6
-                        Layout.leftMargin: 6
-
-                        opacity: 1
-                        onClicked:
-                        {
-                            if(menuBox.state === 'open')
-                            {
-                                menuBox.state = ""
-                                settingsPanel.state === 'open' ? settingsPanel.state = "" : 0;
-                                settingsButton.checked = false
-                            }
-                            else
-                                menuBox.state = 'open';
-
-                        }
-                        checked: false;
-                        checkable: true;
-
-                        transitions: Transition {
-                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
-                        }
-                    }
-
-                    Button
-                    {
-                        id: importFileButton
-                        icon.name: "unknown-document"
-
-                        Layout.minimumHeight: 50
-                        Layout.minimumWidth: 50
-                        Layout.preferredWidth: 50
-                        Layout.rightMargin: 6
-
-                        onClicked:
-                        {
-                            if(!fileDialog.visible)
-                                fileDialog.open();
-
-                            menuBox.state = "";
-                        }
-                        opacity: 0
-
-                        transitions: Transition {
-                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
-                        }
-                    }
-
-                    ComboBox
-                    {
-                        Layout.fillWidth: true
-                        Layout.minimumWidth: 100
-                        Layout.preferredWidth: 200
-                        Layout.minimumHeight: 50
-                        Layout.rightMargin: 6
-
-                        textRole: "description"
-
-                        id: mapSelector
-                        height: 50
-
-                        model: view.map.supportedMapTypes
-
-                        onActivated:
-                        {
-                            view.map.activeMapType = view.map.supportedMapTypes[currentIndex]
-                            menuBox.state = ""
-                        }
-                        opacity: 0
-
-                        transitions: Transition {
-                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
-                        }
-                    }
-
-                    Button
-                    {
-                        id: settingsButton
-                        icon.name: "settings"
-
-                        Layout.minimumHeight: 50
-                        Layout.minimumWidth: 50
-                        Layout.preferredWidth: 50
-                        Layout.rightMargin: 6
-
-                        checkable: true
-                        checked: false
-
-                        states:
-                        [
-                            State {
-                                name: "open"
-                                PropertyChanges
-                                {
-                                    settingsPanel.state: "open"
-                                    settingsPanel.opacity: 1
-                                }
-                            }
-                        ]
-
-                        onClicked:
-                        {
-                            settingsPanel.state === 'open' ? settingsPanel.state = "" : settingsPanel.state = 'open';
-                        }
-                        opacity: 0
-
-                        transitions: Transition {
-                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
-                        }
-                    }
-                }
-                transitions: Transition {
-                    PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
-                }
-            }
-
-            Rectangle
-            {
-                id: settingsPanel
-                Layout.fillHeight: true
-                Layout.preferredWidth: 0
-                Layout.minimumHeight: 0
-                Layout.minimumWidth: 0
-                Layout.rightMargin: 6
-                Layout.topMargin: 6
-                Layout.bottomMargin: 6
-                Layout.alignment: Qt.AlignTop
-                color: "#88000000"
-
-                states:
-                [
-                    State
-                    {
-                        name: "open"
-                        PropertyChanges
-                        {
-                            settingsPanel.width: 646 < settingsPanel.parent.width ? 646 : settingsPanel.parent.width
-                        }
-                    }
-                ]
-
-                transitions: Transition {
-                    PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
-                }
-            }
-        }
-    }
-
-    ColumnLayout
-    {
-        anchors.fill: parent
-        z: 11
-
-        Rectangle
-        {
-            id: legendPanel
-
-            Layout.preferredWidth: 320
-            Layout.preferredHeight: 180
-            Layout.minimumHeight: 160
-            Layout.minimumWidth: 90
-            Layout.rightMargin: 6
-            Layout.topMargin: 6
-            Layout.bottomMargin: 6
-            Layout.alignment: Qt.AlignBottom | Qt.AlignRight
-            color: "#AA000000"
-
-            ColumnLayout
-            {
-                anchors.fill: parent
-                Rectangle
-                {
-                    Layout.fillHeight: true;
-                    Layout.fillWidth: true;
-                    color: "transparent"
-                    Layout.topMargin: 12
-                    Layout.leftMargin: 12
-                    Layout.rightMargin: 12
-
-                    RowLayout
-                    {
-
-                        anchors.fill: parent
-                        Rectangle
-                        {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                            color: "transparent"
-                            Image
-                            {
-                                id: locationImage
-                                anchors.left: parent.left
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                antialiasing: true
-                                source: "icons/location.png"
-                                verticalAlignment: Image.AlignVCenter
-                            }
-
-                            Text
-                            {
-                                text: "<h3>Total</h3>"
-                                anchors.left: locationImage.right
-                                color: "white"
-                                leftPadding: 6
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                            }
-
-                            Text
-                            {
-                                anchors.right: parent.right
-                                text: locationModel.totalPointsOfInterest
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-
-                        Rectangle
-                        {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                            color: "transparent"
-
-                            Image
-                            {
-                                id: wifiImage
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                source: "icons/wifi.png"
-                                anchors.left: parent.left
-                                verticalAlignment: Image.AlignVCenter
-                            }
-
-                            Text
-                            {
-                                text: "<h3>WiFi</h3>"
-                                color: "white"
-                                anchors.left: wifiImage.right
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 6
-                            }
-
-                            Text
-                            {
-                                anchors.right: parent.right
-                                text: locationModel.wifiPointsOfInterest
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-                    }
-                }
-                Rectangle
-                {
-                    Layout.fillHeight: true;
-                    Layout.fillWidth: true;
-                    color: "transparent"
-                    Layout.topMargin: 12
-                    Layout.leftMargin: 12
-                    Layout.rightMargin: 12
-
-                    RowLayout
-                    {
-                        Layout.topMargin: 6
-
-                        anchors.fill: parent
-                        Rectangle
-                        {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                            color: "transparent"
-                            Image
-                            {
-                                id: bluetoothImage
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                antialiasing: true
-                                source: "icons/bluetooth.png"
-                                anchors.left: parent.left
-                                verticalAlignment: Image.AlignVCenter
-                            }
-
-                            Text
-                            {
-                                text: "<h3>Bluetooth</h3>"
-                                anchors.left: bluetoothImage.right
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 6
-                            }
-
-                            Text
-                            {
-                                anchors.right: parent.right
-                                text: locationModel.bluetoothPointsOfInterest
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-
-                        Rectangle
-                        {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                            color: "transparent"
-                            Image
-                            {
-                                id: cellularImage
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                antialiasing: true
-                                source: "icons/radio.png"
-                                anchors.left: parent.left
-                                verticalAlignment: Image.AlignVCenter
-                            }
-
-                            Text
-                            {
-                                text: "<h3>Cellular</h3>"
-                                anchors.left: cellularImage.right
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 6
-                            }
-
-                            Text
-                            {
-                                anchors.right: parent.right
-                                text: locationModel.cellularPointsOfInterest
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     Connections {
@@ -583,30 +194,42 @@ Rectangle
         }
     }
 
-    onWidthChanged:
+    MultiEffect
     {
-        onResize()
+        id: effect
+        source: view
+        anchors.fill: parent
+        blurEnabled: false
+        blurMax: 32
+        blur: 1.0
     }
 
-    onHeightChanged:
-    {
-        onResize()
-    }
-
-    function onResize()
-    {
-        if(!changing)
+    states:
+    [
+        State
         {
-            changing = true
+            name: "blocked"
 
-            var menuState = menuBox.state
-            var settingsState = settingsPanel.state
-            menuBox.state = ""
-            settingsPanel.state = ""
-            menuBox.state = menuState
-            settingsPanel.state = settingsState
-
-            changing = false
+            PropertyChanges
+            {
+                effect.blurEnabled: true
+                view.enabled: false
+            }
         }
+    ]
+
+    transitions: Transition {
+        PropertyAnimation { easing.type: Easing.InOutQuad }
+    }
+
+
+    Settings
+    {
+        id: settings
+
+        property string osmApiKey;
+        property string iconTheme;
+        property bool highDPIMapTiles;
+        property int mapType;
     }
 }
