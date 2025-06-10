@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!-- Generator: Adobe Illustrator 24.1.2, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
+<svg version="1.1" id="Layer_2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 48 48" style="enable-background:new 0 0 48 48;" xml:space="preserve">
+<circle style="fill:#0078D4;" cx="24" cy="23" r="20"/>
+<circle style="fill:#199BE2;" cx="24" cy="23" r="15"/>
+<circle style="fill:#35C1F1;" cx="24" cy="23" r="10"/>
+<radialGradient id="SVGID_1_" cx="24" cy="23" r="7" gradientUnits="userSpaceOnUse">
+	<stop  offset="0" style="stop-color:#000000"/>
+	<stop  offset="0.011" style="stop-color:#000000;stop-opacity:0.989"/>
+	<stop  offset="1" style="stop-color:#000000;stop-opacity:0"/>
+</radialGradient>
+<circle style="fill:url(#SVGID_1_);" cx="24" cy="23" r="7"/>
+<path style="opacity:0.07;" d="M22,42.899C22.658,42.964,23.325,43,24,43s1.342-0.036,2-0.101V26h-4V42.899z"/>
+<path style="opacity:0.05;" d="M21,42.751C21.981,42.899,22.978,43,24,43s2.019-0.101,3-0.249V24h-6V42.751z"/>
+<circle style="fill:#50E6FF;" cx="24" cy="23" r="5"/>
+<path style="fill:#50E6FF;" d="M24,45c-0.552,0-1-0.447-1-1V27c0-0.553,0.448-1,1-1s1,0.447,1,1v17C25,44.553,24.552,45,24,45z"/>
+</svg>
