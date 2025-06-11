@@ -126,11 +126,171 @@ double LocationModel::logScale(double percentage, double min, double max)
     return max * std::pow(min / max, percentage);
 }
 
-void LocationModel::parseKML(QString fileName, bool append)
+void LocationModel::parseCSV(QString fileName)
 {
     startLoading(QString("Importing file into database `%1`").arg(m_loadedDatabase));
 
-    auto result = QtConcurrent::run([this, fileName, append] {
+    m_totalPointsOfInterestTemp = m_totalPointsOfInterest;
+    m_bluetoothPointsOfInterestTemp = m_bluetoothPointsOfInterest;
+    m_cellularPointsOfInterestTemp = m_cellularPointsOfInterest;
+    m_wifiPointsOfInterestTemp = m_wifiPointsOfInterest;
+
+    auto result = QtConcurrent::run([this, fileName] {
+        QFile file(fileName);
+
+        qDebug() << "Opening file" << fileName;
+
+        if(!file.exists())
+        {
+            qDebug() << "Couldnt open file " + file.errorString();
+            errorOccurred("File Error", "Could not open file due to invalid filename or path.");
+            return;
+        }
+
+        if(!file.open(QFile::ReadOnly))
+        {
+            qDebug() << "Couldnt open file " + file.errorString();
+            errorOccurred("File Error", "Could not open file. " + file.errorString());
+            return;
+        }
+
+        bool valid = false;
+
+        while(!file.atEnd())
+        {
+            QString line = file.readLine();
+
+            //pre-header and header information not currently being used
+            if(line.startsWith("wigle", Qt::CaseInsensitive) || line.startsWith("mac,ssid", Qt::CaseInsensitive))
+            {
+                if(line.startsWith("wigle", Qt::CaseInsensitive))
+                    valid = true; //eventually change this to properly validate versions
+
+                setProgress(file.pos() / file.size());
+                continue;
+            }
+
+            // if(!valid)
+            // {
+            //     errorOccurred("CSV Error", "File is not a valid Wigle CSV file");
+            //     return;
+            // }
+
+            QStringList segments = line.split(',');
+
+            if(segments.count() != 14)
+                continue;
+
+            QString type = segments[13];
+
+            QString capabilitiesString = segments[2];
+            capabilitiesString.replace("][", " ");
+            capabilitiesString.remove("[");
+            capabilitiesString.remove("]");
+
+            QStringList capabilities = capabilitiesString.split(' ', Qt::SkipEmptyParts);
+
+            //[BSSID],[SSID],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
+            if(wifiTypeKeys.contains(type))
+            {
+                LocationData data {
+                    segments[10].toDouble(),
+                    1,
+                    QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
+                    "",
+                    segments[2],
+                    segments[0],
+                    segments[1],
+                    segments[4].toInt(),
+                    segments[6].toDouble(),
+                    "", //don't know how wigle calculates style tags
+                    segments[13],
+                    QDateTime::fromString(segments[3]),
+                    segments[12],
+                    segments[5].toDouble(),
+                    capabilities,
+                    segments[11].split(' ', Qt::SkipEmptyParts)
+                };
+                ++m_wifiPointsOfInterestTemp;
+
+                append(data);
+            }
+
+            //[BD_ADDR],[Device Name],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
+            else if(cellTypeKeys.contains(type))
+            {
+                LocationData data {
+                    segments[10].toDouble(),
+                    1,
+                    QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
+                    "",
+                    segments[2],
+                    segments[0],
+                    segments[1],
+                    segments[4].toInt(),
+                    segments[6].toDouble(),
+                    "", //don't know how wigle calculates style tags
+                    segments[13],
+                    QDateTime::fromString(segments[3]),
+                    segments[12],
+                    segments[5].toDouble(),
+                    capabilities,
+                    segments[11].split(' ', Qt::SkipEmptyParts)
+                };
+                ++m_bluetoothPointsOfInterestTemp;
+
+                append(data);
+            }
+
+            //[BD_ADDR],[Device Name],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
+            else if(bluetoothTypeKeys.contains(type))
+            {
+                LocationData data {
+                    segments[10].toDouble(),
+                    1,
+                    QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
+                    "",
+                    segments[2],
+                    segments[0],
+                    segments[1],
+                    segments[4].toInt(),
+                    segments[6].toDouble(),
+                    "", //don't know how wigle calculates style tags
+                    segments[13],
+                    QDateTime::fromString(segments[3]),
+                    segments[12],
+                    segments[5].toDouble(),
+                    capabilities,
+                    segments[11].split(' ', Qt::SkipEmptyParts)
+                };
+                ++m_bluetoothPointsOfInterestTemp;
+
+                append(data);
+            }
+
+            setProgress(file.pos() / file.size());
+        }
+
+        file.close();
+    });
+
+    watcher.setFuture(result);
+
+    connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        setTotalPointsOfInterest(m_totalPointsOfInterestTemp);
+        setBluetoothPointsOfInterest(m_bluetoothPointsOfInterestTemp);
+        setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
+        setCellularPointsOfInterest(m_cellularPointsOfInterestTemp);
+        endLoading();
+        save();
+    });
+}
+
+void LocationModel::parseKML(QString fileName)
+{
+    startLoading(QString("Importing file into database `%1`").arg(m_loadedDatabase));
+
+    auto result = QtConcurrent::run([this, fileName] {
 
         if(!m_threadMutex.tryLock(QDeadlineTimer(1500)))
             return;
@@ -152,9 +312,6 @@ void LocationModel::parseKML(QString fileName, bool append)
             return;
         }
 
-        if(!append)
-            resetDataModel();
-
         QXmlStreamReader xml(&file);
         quint64 loop = 0;
 
@@ -165,7 +322,7 @@ void LocationModel::parseKML(QString fileName, bool append)
 
         while(!xml.atEnd())
         {
-            m_progress = static_cast<qreal>(file.pos()) / file.size();
+            setProgress(static_cast<qreal>(file.pos()) / file.size());
 
             xml.readNextStartElement();
             QString elementName = xml.name().toString().toLower();
@@ -213,12 +370,12 @@ void LocationModel::parseKML(QString fileName, bool append)
 
                                 if(key == "type")
                                 {
-                                    if(value.toLower() == "wifi")
-                                        ++m_wifiPointsOfInterest;
-                                    else if(value.toLower() == "bt" || value.toLower() == "ble")
-                                        ++m_bluetoothPointsOfInterest;
-                                    else if(value.toLower() == "lte" || value.toLower() == "nr" || value.toLower() == "gsm" || value.toLower() == "wcdma")
-                                        ++m_cellularPointsOfInterest;
+                                    if(wifiTypeKeys.contains(value))
+                                        ++m_wifiPointsOfInterestTemp;
+                                    else if(bluetoothTypeKeys.contains(value))
+                                        ++m_bluetoothPointsOfInterestTemp;
+                                    else if(cellTypeKeys.contains(value))
+                                        ++m_cellularPointsOfInterestTemp;
                                     else
                                         qDebug() << "Uknown Type Key" << value;
 
@@ -227,15 +384,21 @@ void LocationModel::parseKML(QString fileName, bool append)
                                 else if(key == "encryption")
                                     data.encryption = value;
                                 else if(key == "capabilities")
-                                    data.encryption = value;
+                                {
+                                    QString capabilitiesString = value;
+                                    capabilitiesString.remove("[");
+                                    capabilitiesString.remove("]");
+
+                                    data.capabilities = capabilitiesString.split("][", Qt::SkipEmptyParts);
+                                }
                                 else if(key == "frequency")
-                                    data.encryption = value;
+                                    data.frequency = value.toDouble();
                                 else if(key == "time")
-                                    data.encryption = value;
+                                    data.timestamp = QDateTime::fromString(value);
                                 else if(key == "signal")
-                                    data.encryption = value;
-                                else if(key == "roamingcois")
-                                    data.encryption = value;
+                                    data.signal = value.toDouble();
+                                else if(key == "network id")
+                                    data.id = value;
                             }
                         }
 
@@ -296,7 +459,7 @@ void LocationModel::parseKML(QString fileName, bool append)
             qDebug() << xml.errorString();
         }
 
-        qDebug() << "Parsed" << m_totalPointsOfInterestTemp << "POIs";
+        qDebug() << "Parsed" << m_totalPointsOfInterestTemp - m_totalPointsOfInterest << "POIs";
 
         if(m_debug)
         {
@@ -317,7 +480,7 @@ void LocationModel::parseKML(QString fileName, bool append)
     });
 }
 
-void LocationModel::openFile(QString fileName, bool append)
+void LocationModel::openFile(QString fileName)
 {
     if(!fileName.startsWith("file://", Qt::CaseInsensitive))
         return;
@@ -325,7 +488,9 @@ void LocationModel::openFile(QString fileName, bool append)
     fileName.remove(0,7);
 
     if(fileName.endsWith(".kml", Qt::CaseInsensitive))
-        parseKML(fileName, append);
+        parseKML(fileName);
+    else if(fileName.endsWith(".csv", Qt::CaseInsensitive))
+        parseCSV(fileName);
 }
 
 qreal LocationModel::progress() const
@@ -456,10 +621,21 @@ void LocationModel::save()
                     LocationData data = node->data;
                     QString fileData;
 
-                    fileData = QString::number(data.coordinates.longitude()) + "," + QString::number(data.coordinates.latitude()) + ",";
+                    QString capabilities;
+
+                    for(const QString &capability : std::as_const(data.capabilities))
+                        capabilities += "[" + capability + "]";
+
+                    QString rois;
+
+                    for(const QString &roi : std::as_const(data.rois))
+                        rois += "[" + roi + "]";
+
+                    fileData =  data.id + "," + QString::number(data.coordinates.longitude()) + "," + QString::number(data.coordinates.latitude()) + ",";
                     fileData += data.encryption + "," + data.description + "," + data.name + "," + data.type + ",";
                     fileData += QString::number(data.accuracy) + "," + QString::number(data.signal) + ",";
-                    fileData += QString::number(data.open) + "," + QString::number(data.timestamp.toMSecsSinceEpoch()) + "," + data.styleTag;
+                    fileData += QString::number(data.open) + "," + QString::number(data.timestamp.toMSecsSinceEpoch()) + "," + data.styleTag + ",";
+                    fileData += capabilities + "," + rois + "," + data.mfgid + "," + QString::number(data.frequency);
 
                     node = node->next;
 
@@ -468,7 +644,7 @@ void LocationModel::save()
 
                 file.close();
 
-                m_progress = (longitudeIndex + latitudeIndex) / totalOps;
+                setProgress((longitudeIndex + latitudeIndex) / totalOps);
 
                 m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
             }
@@ -484,10 +660,12 @@ void LocationModel::load(QString database)
 {
     startLoading("Loading");
 
-    m_bluetoothPointsOfInterestTemp = m_bluetoothPointsOfInterest;
-    m_wifiPointsOfInterestTemp = m_wifiPointsOfInterest;
-    m_totalPointsOfInterestTemp = m_totalPointsOfInterest;
-    m_cellularPointsOfInterestTemp = m_cellularPointsOfInterest;
+    resetSectorData();
+
+    m_bluetoothPointsOfInterestTemp = 0;
+    m_wifiPointsOfInterestTemp = 0;
+    m_totalPointsOfInterestTemp = 0;
+    m_cellularPointsOfInterestTemp = 0;
 
     watcher.disconnect();
     watcher.setFuture(QtConcurrent::run([this, database](){
@@ -521,24 +699,37 @@ void LocationModel::load(QString database)
                 }
 
                 LocationDataNode *node = m_sectors[longitudeIndex][latitudeIndex].head;
-
                 while(!file.atEnd())
                 {
                     QString line = QUrl::fromPercentEncoding(file.readLine());
                     QStringList segments = line.split(',');
 
+                    QString capabilitiesString = segments[12];
+                    capabilitiesString.remove("[");
+                    capabilitiesString.remove("]");
+
+                    QString roiString = segments[13];
+                    roiString.remove("[");
+                    roiString.remove("]");
+
+                    //fileData += capabilities + "," + rois + "," + data.mfgid + "," + QString::number(data.frequency);
                     LocationData data {
-                        segments[6].toDouble(), //accuracy
+                        segments[7].toDouble(), //accuracy
                         1, //cluster count
-                        QGeoCoordinate(segments[1].toDouble(), segments[0].toDouble()),
-                        segments[3],
-                        segments[2],
+                        QGeoCoordinate(segments[2].toDouble(), segments[1].toDouble()),
                         segments[4],
-                        segments[8].toInt(),
-                        segments[7].toDouble(),
-                        segments[10],
+                        segments[3],
+                        segments[0],
                         segments[5],
-                        QDateTime::fromMSecsSinceEpoch(segments[9].toLongLong())
+                        segments[9].toInt(),
+                        segments[8].toDouble(),
+                        segments[11],
+                        segments[6],
+                        QDateTime::fromMSecsSinceEpoch(segments[10].toLongLong()),
+                        segments[14],
+                        segments[15].toDouble(),
+                        capabilitiesString.split("][", Qt::SkipEmptyParts),
+                        roiString.split("][", Qt::SkipEmptyParts)
                     };
 
                     if(data.type.toLower() == "wifi")
@@ -575,7 +766,7 @@ void LocationModel::load(QString database)
                 file.close();
 
                 if(totalOps > 0)
-                    m_progress = completedOps / totalOps;
+                    setProgress(completedOps / totalOps);
 
                 m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
                 setLoadedDatabase(database);
@@ -623,11 +814,7 @@ LocationDataNode *groupPoints(LocationDataNode *node, QGeoShape area,  qreal clu
 
     //group POI clusters
     LocationDataNode *viewportNodeIteratorA = copiedHead;
-    quint64 viewportNodeRemovals = 0;
-
-    if(copiedHead)
-        bool stop = true;
-
+    quint64 groups = 0;
 
     while(viewportNodeIteratorA)
     {
@@ -648,6 +835,7 @@ LocationDataNode *groupPoints(LocationDataNode *node, QGeoShape area,  qreal clu
                 viewportNodeIteratorB = viewportNodeIteratorC->next;
 
                 --count;
+                ++groups;
 
                 continue;
             }
@@ -658,6 +846,8 @@ LocationDataNode *groupPoints(LocationDataNode *node, QGeoShape area,  qreal clu
 
         viewportNodeIteratorA = viewportNodeIteratorA->next;
     }
+
+    qDebug() << "Grouped" << groups << "within" << clusterDistance;
 
     return copiedHead;
 }
@@ -671,8 +861,8 @@ void LocationModel::getPointsInRect(QGeoShape area, qreal zoomLevel)
 
         qreal timeStart = QDateTime::currentMSecsSinceEpoch();
 
-        QFutureSynchronizer<LocationDataNode*> watcher;
-        QList<QFuture<LocationDataNode*>> futures;
+        // QFutureSynchronizer<LocationDataNode*> watcher;
+        // QList<QFuture<LocationDataNode*>> futures;
 
         QGeoPolygon poly = area;
 
@@ -837,6 +1027,35 @@ void LocationModel::resetDataModel()
     endResetModel();
 }
 
+void LocationModel::resetSectorData()
+{
+    //clear sectored data
+    for(int longitude = 0; longitude < 360; ++longitude)
+    {
+        for(int latitude = 0; latitude < 180; ++latitude)
+        {
+            LocationDataNode *node = m_sectors[longitude][latitude].head;
+
+            while(node)
+            {
+                LocationDataNode *currentNode = node;
+                node = node->next;
+
+                delete currentNode;
+            }
+
+            m_sectors[longitude][latitude].last = nullptr;
+            m_sectors[longitude][latitude].updated = false;
+            m_sectors[longitude][latitude].locations = 0;
+        }
+    }
+
+    setTotalPointsOfInterest(0);
+    setBluetoothPointsOfInterest(0);
+    setCellularPointsOfInterest(0);
+    setWifiPointsOfInterest(0);
+}
+
 void LocationModel::startLoading(QString title)
 {
     m_loading = true;
@@ -895,7 +1114,7 @@ void LocationModel::resetDatabase()
         quint64 totalOps = fileOps + memOps;
         quint64 completedFileOps = 0;
         quint64 completedMemOps = 0;
-        m_progress = 0;
+        setProgress(0);
 
         QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + m_loadedDatabase);
 
@@ -941,7 +1160,7 @@ void LocationModel::resetDatabase()
                     latitudeDirectory.rmdir(latitudeDirectory.absolutePath());
 
                 //progress = 50% file ops 50% mem ops = (completeFops / fops) * 0.5 + (completedMops / mops) * 0.5
-                m_progress = ((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5);
+                setProgress(((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5));
 
                 while(node)
                 {
@@ -950,8 +1169,12 @@ void LocationModel::resetDatabase()
 
                     delete currentNode;
 
-                    m_progress = ((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5);
+                    setProgress(((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5));
                 }
+
+                m_sectors[longitude][latitude].last = nullptr;
+                m_sectors[longitude][latitude].updated = false;
+                m_sectors[longitude][latitude].locations = 0;
             }
 
             //remove the directory if its not the default database
