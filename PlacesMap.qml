@@ -231,5 +231,6 @@ Item
         property string iconTheme;
         property bool highDPIMapTiles;
         property int mapType;
+        property string database: "default";
     }
 }

@@ -231,8 +231,9 @@ Item {
 
                             Text
                             {
+                                id: bluetoothPOIValue
                                 anchors.right: parent.right
-                                text: "0"
+                                text: locationModel.bluetoothPointsOfInterest
                                 color: "white"
                                 height: 24
                                 verticalAlignment: Text.AlignVCenter
@@ -242,7 +243,7 @@ Item {
 
                                     function onBluetoothPointsOfInterestChanged()
                                     {
-                                        text = locationModel.bluetoothPointsOfInterest
+                                        bluetoothPOIValue.text = locationModel.bluetoothPointsOfInterest
                                     }
                                 }
 
@@ -297,18 +298,19 @@ Item {
 
                             Text
                             {
+                                id: cellularPOIValue
                                 anchors.right: parent.right
                                 color: "white"
                                 height: 24
                                 verticalAlignment: Text.AlignVCenter
-                                text: "0"
+                                text: locationModel.cellularPointsOfInterest
 
                                 Connections {
                                     target: locationModel
 
                                     function onCellularPointsOfInterestChanged()
                                     {
-                                        text = locationModel.cellularPointsOfInterest
+                                        cellularPOIValue.text = locationModel.cellularPointsOfInterest
                                     }
                                 }
 

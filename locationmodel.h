@@ -18,6 +18,7 @@
 #include <QGeoLocation>
 #include <QGeoCoordinate>
 #include <QtConcurrent/QtConcurrentRun>
+#include <QRegularExpression>
 
 /*
  * Location data memory mapping
@@ -176,6 +177,7 @@ signals:
     void loadedDatabaseChanged();
 
 private:
+    QRegularExpression m_kmlDescriptionSeparator = QRegularExpression("(?<!:)\\s");
     QString m_database = "default";
     QString m_loadedDatabase = "default";
     QStringList m_availableDatabases { "default" };
