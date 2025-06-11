@@ -141,14 +141,14 @@ void LocationModel::parseKML(QString fileName, bool append)
         if(!file.exists())
         {
             qDebug() << "Couldnt open file " + file.errorString();
-            emit errorOccurred("File Error", "Could not open file due to invalid filename or path.");
+            errorOccurred("File Error", "Could not open file due to invalid filename or path.");
             return;
         }
 
         if(!file.open(QFile::ReadOnly))
         {
             qDebug() << "Couldnt open file " + file.errorString();
-            emit errorOccurred("File Error", "Could not open file. " + file.errorString());
+            errorOccurred("File Error", "Could not open file. " + file.errorString());
             return;
         }
 
@@ -156,11 +156,12 @@ void LocationModel::parseKML(QString fileName, bool append)
             resetDataModel();
 
         QXmlStreamReader xml(&file);
-        quint64 pois = 0;
-        quint64 bluetooth = 0;
-        quint64 cellular = 0;
-        quint64 wifi = 0;
         quint64 loop = 0;
+
+        m_totalPointsOfInterestTemp = m_totalPointsOfInterest;
+        m_bluetoothPointsOfInterestTemp = m_bluetoothPointsOfInterest;
+        m_cellularPointsOfInterestTemp = m_cellularPointsOfInterest;
+        m_wifiPointsOfInterestTemp = m_wifiPointsOfInterest;
 
         while(!xml.atEnd())
         {
@@ -195,8 +196,11 @@ void LocationModel::parseKML(QString fileName, bool append)
                     else if(markerAttribute == "description")
                     {
                         QString description = xml.readElementText();
+                        QString descriptionValue = description;
 
-                        QStringList lines = description.split(QString("\n"), Qt::SkipEmptyParts);
+                        //remove newlines, they are not a reliable separator for this block
+                        description.replace('\n', ' ');
+                        QStringList lines = description.split(m_kmlDescriptionSeparator);
 
                         for(const QString &line : std::as_const(lines))
                         {
@@ -210,11 +214,11 @@ void LocationModel::parseKML(QString fileName, bool append)
                                 if(key == "type")
                                 {
                                     if(value.toLower() == "wifi")
-                                        ++wifi;
+                                        ++m_wifiPointsOfInterest;
                                     else if(value.toLower() == "bt" || value.toLower() == "ble")
-                                        ++bluetooth;
-                                    else if(value.toLower() == "lte" || value.toLower() == "nr")
-                                        ++cellular;
+                                        ++m_bluetoothPointsOfInterest;
+                                    else if(value.toLower() == "lte" || value.toLower() == "nr" || value.toLower() == "gsm" || value.toLower() == "wcdma")
+                                        ++m_cellularPointsOfInterest;
                                     else
                                         qDebug() << "Uknown Type Key" << value;
 
@@ -235,7 +239,7 @@ void LocationModel::parseKML(QString fileName, bool append)
                             }
                         }
 
-                        data.description = description;
+                        data.description = descriptionValue;
                     }
 
                     else if(markerAttribute == "styleurl")
@@ -280,51 +284,23 @@ void LocationModel::parseKML(QString fileName, bool append)
                         data.open = xml.readElementText().toInt();
                 }
 
-                // if(!m_headNode)
-                // {
-                //     m_headNode = new LocationDataNode;
-                //     m_lastNode = m_headNode;
-                // }
-                // else
-                // {
-                //     m_lastNode->next = new LocationDataNode;
-                //     m_lastNode = m_lastNode->next;
-                // }
-
-                // m_lastNode->data = data;
-
                 this->append(data);
-
-                ++m_nodeLength;
+                ++m_totalPointsOfInterestTemp;
             }
         }
 
         file.close();
-
-        setTotalPointsOfInterest(m_nodeLength);
-        setBluetoothPointsOfInterest(bluetooth);
-        setCellularPointsOfInterest(cellular);
-        setWifiPointsOfInterest(wifi);
 
         if(xml.hasError())
         {
             qDebug() << xml.errorString();
         }
 
-        qDebug() << "Parsed" << m_nodeLength << "POIs";
+        qDebug() << "Parsed" << m_totalPointsOfInterestTemp << "POIs";
 
         if(m_debug)
         {
-            quint64 verified = 0;
-            LocationDataNode *node = m_headNode;
-
-            while(node)
-            {
-                ++verified;
-                node = node->next;
-            }
-
-            qDebug() << "Verified" << verified << "POIs";
+            // need an updated verification
         }
 
         m_threadMutex.unlock();
@@ -332,6 +308,10 @@ void LocationModel::parseKML(QString fileName, bool append)
     watcher.setFuture(result);
 
     connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        setTotalPointsOfInterest(m_totalPointsOfInterestTemp);
+        setBluetoothPointsOfInterest(m_bluetoothPointsOfInterestTemp);
+        setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
+        setCellularPointsOfInterest(m_cellularPointsOfInterestTemp);
         endLoading();
         save();
     });
@@ -565,7 +545,7 @@ void LocationModel::load(QString database)
                         ++m_wifiPointsOfInterestTemp;
                     else if(data.type.toLower() == "bt" || data.type.toLower() == "ble")
                         ++m_bluetoothPointsOfInterestTemp;
-                    else if(data.type.toLower() == "lte" || data.type.toLower() == "nr" || data.type.toLower() == "gsm")
+                    else if(data.type.toLower() == "lte" || data.type.toLower() == "nr" || data.type.toLower() == "gsm" || data.type.toLower() == "wcdma")
                         ++m_cellularPointsOfInterestTemp;
                     else if(!data.type.isEmpty())
                         qDebug() << "Uknown Type Key" << data.type;
@@ -594,10 +574,11 @@ void LocationModel::load(QString database)
 
                 file.close();
 
-                m_progress = completedOps / totalOps;
+                if(totalOps > 0)
+                    m_progress = completedOps / totalOps;
 
                 m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
-                setDatabase(database);
+                setLoadedDatabase(database);
             }
         }
     }));
@@ -810,6 +791,8 @@ void LocationModel::setLoadedDatabase(const QString &loadedDatabase)
 {
     if (m_loadedDatabase == loadedDatabase)
         return;
+
+    setDatabase(loadedDatabase);
     m_loadedDatabase = loadedDatabase;
     emit loadedDatabaseChanged();
 }

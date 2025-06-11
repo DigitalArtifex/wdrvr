@@ -14,7 +14,7 @@ Item
         property string iconTheme;
         property bool highDPIMapTiles;
         property int mapType;
-        property string database;
+        property string database: "default";
     }
 
     Rectangle
