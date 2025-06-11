@@ -19,6 +19,7 @@
 #include <QGeoCoordinate>
 #include <QtConcurrent/QtConcurrentRun>
 #include <QRegularExpression>
+#include <QVariantHash>
 
 /*
  * Location data memory mapping
@@ -47,15 +48,49 @@ struct LocationData
     QGeoCoordinate coordinates;
     QString description;
     QString encryption;
+    QString id;
     QString name;
     int open = 0;
     qreal signal = 0;
     QString styleTag;
     QString type;
     QDateTime timestamp;
+    QString mfgid;
+    qreal frequency;
+    QStringList capabilities;
+    QStringList rois;
+
+    LocationData operator=(const LocationData &other)
+    {
+        accuracy = other.accuracy;
+        clusterCount = other.clusterCount;
+        coordinates = other.coordinates;
+        description = other.description;
+        encryption = other.encryption;
+        id = other.id;
+        name = other.name;
+        open = other.open;
+        signal = other.signal;
+        styleTag = other.styleTag;
+        type = other.type;
+        timestamp = other.timestamp;
+        mfgid = other.mfgid;
+        frequency = other.frequency;
+        capabilities = other.capabilities;
+        rois = other.rois;
+
+        return *this;
+    }
 };
 
 Q_DECLARE_METATYPE(LocationData)
+
+class AbstractLocationData
+{
+    QVariantHash data;
+};
+
+Q_DECLARE_METATYPE(AbstractLocationData)
 
 struct LocationDataNode
 {
@@ -99,8 +134,9 @@ public:
     void clear();
     double logScale(double percentage, double min = 10, double max = 500000.0);
 
-    Q_INVOKABLE void parseKML(QString fileName, bool append = false);
-    Q_INVOKABLE void openFile(QString fileName, bool append = false);
+    void parseKML(QString fileName);
+    void parseCSV(QString fileName);
+    Q_INVOKABLE void openFile(QString fileName);
 
     qreal progress() const;
     void setProgress(qreal progress);
@@ -177,6 +213,24 @@ signals:
     void loadedDatabaseChanged();
 
 private:
+
+    const QStringList wifiTypeKeys {
+        "WIFI"
+    };
+
+    const QStringList bluetoothTypeKeys {
+        "BT",
+        "BLE"
+    };
+
+    const QStringList cellTypeKeys {
+        "GSM",
+        "CDMA",
+        "WCDMA",
+        "LTE",
+        "NR"
+    };
+
     QRegularExpression m_kmlDescriptionSeparator = QRegularExpression("(?<!:)\\s");
     QString m_database = "default";
     QString m_loadedDatabase = "default";
@@ -189,6 +243,7 @@ private:
 
     bool m_debug = false;
     void resetDataModel();
+    void resetSectorData();
     void startLoading(QString title);
     void endLoading();
     void startUpdateTimer();

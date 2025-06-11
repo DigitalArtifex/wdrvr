@@ -58,16 +58,10 @@ Item
         PositionSource
         {
             id: positionSource
-            property variant lastSearchPosition: QtPositioning.coordinate(59.93, 10.76) //Initialized/Fallback to Oslo
+            property variant lastSearchPosition: QtPositioning.coordinate(settings.latitude, settings.longitude) //Initialized/Fallback to Oslo
             active: true
-            updateInterval: 120000 // 2 mins
+            updateInterval: 1000 // 2 mins
             onPositionChanged:  {
-                var distance = lastSearchPosition.distanceTo(position.coordinate)
-                if (distance > 100) {
-                    // 500m from last performed food search
-                    lastSearchPosition = positionSource.position.coordinate
-                    locationModel.getLocations(positionSource.position.coordinate, 500, view.map.zoomLevel / view.map.maximumZoomLevel)
-                }
             }
         }
         //! [Current Location]
@@ -89,10 +83,7 @@ Item
 
             map.onZoomLevelChanged:
             {
-                // var cord = view.map.toCoordinate(Qt.point(0,0))
-                // var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
-                // locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
-                locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel);
+                locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
             }
 
             map.onActiveMapTypeChanged: settings.mapType = map.supportedMapTypes.indexOf(map.activeMapType)
@@ -116,13 +107,11 @@ Item
 
                     onPositionChanged:
                     {
-                        if(panning)
-                        {
-                            // var cord = view.map.toCoordinate(Qt.point(0,0))
-                            // var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2))
-                            // locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
-                            console.log(view.map.visibleRegion)
-                            locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel);
+                        var distance = positionSource.lastSearchPosition.distanceTo(view.map.center)
+                        if (distance > 500) {
+                            // 500m from last performed food search
+                            positionSource.lastSearchPosition = view.map.center
+                            locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
                         }
                     }
                 }
@@ -232,5 +221,7 @@ Item
         property bool highDPIMapTiles;
         property int mapType;
         property string database: "default";
+        property double latitude: 59.93
+        property double longitude: 10.76
     }
 }

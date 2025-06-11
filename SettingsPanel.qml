@@ -56,7 +56,7 @@ Item
                 Button
                 {
                     Layout.preferredHeight: 35
-                    icon.name: "disk-partition"
+                    icon.name: "create"
                     icon.width: 24
                     icon.height: 24
                     Layout.rightMargin: 6
@@ -69,7 +69,7 @@ Item
                 Button
                 {
                     Layout.preferredHeight: 35
-                    icon.name: "import"
+                    icon.name: "open"
                     icon.width: 24
                     icon.height: 24
                     Layout.rightMargin: 6
