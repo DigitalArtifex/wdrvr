@@ -18,7 +18,8 @@ void quit(int signum)
     if(appRef)
         appRef->exit(0);
 }
-#elif Q_OS_WIN
+#endif
+#ifdef Q_OS_WIN
 #include <windows.h>
 
 BOOL WINAPI WinHandler(DWORD CEvent)
@@ -42,7 +43,8 @@ int main(int argc, char **argv)
     signal(SIGKILL, quit);
     signal(SIGTERM, quit);
     qputenv("QT_QPA_PLATFORMTHEME", "gtk3");
-#elif Q_OS_WIN
+#endif
+#ifdef Q_OS_WIN
     SetConsoleCtrlHandler((PHANDLER_ROUTINE)WinHandler, TRUE);
 #endif
 
