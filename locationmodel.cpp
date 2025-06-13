@@ -577,10 +577,12 @@ void LocationModel::parseKML(QString fileName)
 
 void LocationModel::openFile(QString fileName)
 {
-    if(!fileName.startsWith("file://", Qt::CaseInsensitive))
-        return;
+    //damn windows
+    if(fileName.startsWith("file:///", Qt::CaseInsensitive))
+        fileName.remove(0,8);
 
-    fileName.remove(0,7);
+    if(fileName.startsWith("file://", Qt::CaseInsensitive))
+        fileName.remove(0,7);
 
     if(fileName.endsWith(".kml", Qt::CaseInsensitive))
         parseKML(fileName);
