@@ -7,6 +7,7 @@
 #include <QQuickView>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQuickStyle>
 QGuiApplication *appRef = nullptr;
 LocationModel *model;
 
@@ -35,20 +36,22 @@ BOOL WINAPI WinHandler(DWORD CEvent)
 
 int main(int argc, char **argv)
 {
-    QGuiApplication app(argc,argv);
-    app.setOrganizationName("DigitalArtifex");
-    app.setOrganizationName("digitalartifex.com");
-    app.setApplicationName("wdrvr");
-    app.setApplicationDisplayName("wdrvr");
-    appRef = &app;
 
 #ifdef Q_OS_LINUX
     signal(SIGINT, quit);
     signal(SIGKILL, quit);
     signal(SIGTERM, quit);
+    qputenv("QT_QPA_PLATFORMTHEME", "gtk3");
 #elif Q_OS_WIN
     SetConsoleCtrlHandler((PHANDLER_ROUTINE)WinHandler, TRUE);
 #endif
+
+    QApplication app(argc,argv);
+    app.setOrganizationName("DigitalArtifex");
+    app.setOrganizationName("digitalartifex.com");
+    app.setApplicationName("wdrvr");
+    app.setApplicationDisplayName("wdrvr");
+    appRef = &app;
 
     QQuickView view;
     LocationModel model;

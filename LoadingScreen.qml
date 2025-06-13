@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Effects
 
 Item
 {
@@ -19,10 +20,21 @@ Item
             anchors.bottom: parent.verticalCenter
             anchors.horizontalCenter: parent.horizontalCenter
 
-            text: qsTr("<h1>Loading</h1>")
-            color: "white"
+            text: "<h1>" + locationModel.loadingTitle + "</h1>"
+            color: "black"
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
+
+            MultiEffect
+            {
+                source: loadingText
+                anchors.fill: loadingText
+
+                shadowEnabled: true
+                shadowHorizontalOffset: 2
+                shadowVerticalOffset: 2
+                shadowColor: "#ffffff"
+            }
         }
 
         ProgressBar
@@ -52,11 +64,6 @@ Item
                         loadingProgress.indeterminate = false;
                         loadingProgress.value = locationModel.progress;
                     }
-                }
-
-                function onLoadingTitleChanged()
-                {
-                    loadingText.text = locationModel.loadingTitle
                 }
             }
         }

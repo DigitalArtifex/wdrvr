@@ -59,38 +59,9 @@ struct LocationData
     qreal frequency;
     QStringList capabilities;
     QStringList rois;
-
-    LocationData operator=(const LocationData &other)
-    {
-        accuracy = other.accuracy;
-        clusterCount = other.clusterCount;
-        coordinates = other.coordinates;
-        description = other.description;
-        encryption = other.encryption;
-        id = other.id;
-        name = other.name;
-        open = other.open;
-        signal = other.signal;
-        styleTag = other.styleTag;
-        type = other.type;
-        timestamp = other.timestamp;
-        mfgid = other.mfgid;
-        frequency = other.frequency;
-        capabilities = other.capabilities;
-        rois = other.rois;
-
-        return *this;
-    }
 };
 
 Q_DECLARE_METATYPE(LocationData)
-
-class AbstractLocationData
-{
-    QVariantHash data;
-};
-
-Q_DECLARE_METATYPE(AbstractLocationData)
 
 struct LocationDataNode
 {
@@ -179,6 +150,36 @@ public:
     QString loadedDatabase() const;
     void setLoadedDatabase(const QString &loadedDatabase);
 
+    QString currentPage() const;
+    void setCurrentPage(const QString &currentPage);
+
+    quint64 bluetoothStats() const;
+    void setBluetoothStats(quint64 bluetoothStats);
+
+    quint64 bluetoothLEStats() const;
+    void setBluetoothLEStats(quint64 bluetoothLEStats);
+
+    quint64 gsmStats() const;
+    void setGsmStats(quint64 gsmStats);
+
+    quint64 cdmaStats() const;
+    void setCdmaStats(quint64 cdmaStats);
+
+    quint64 wcdmaStats() const;
+    void setWcdmaStats(quint64 wcdmaStats);
+
+    quint64 lteStats() const;
+    void setLteStats(quint64 lteStats);
+
+    quint64 nrStats() const;
+    void setNrStats(quint64 nrStats);
+
+    quint64 wifiStats() const;
+    void setWifiStats(quint64 wifiStats);
+
+    qreal mpsAverage() const;
+    void setMpsAverage(qreal mpsAverage);
+
 public slots:
     Q_INVOKABLE void getPointsInRect(QGeoShape area, qreal zoomLevel);
 
@@ -212,6 +213,26 @@ signals:
 
     void loadedDatabaseChanged();
 
+    void currentPageChanged();
+
+    void bluetoothStatsChanged();
+
+    void bluetoothLEStatsChanged();
+
+    void gsmStatsChanged();
+
+    void cdmaStatsChanged();
+
+    void wcdmaStatsChanged();
+
+    void lteStatsChanged();
+
+    void nrStatsChanged();
+
+    void wifiStatsChanged();
+
+    void mpsAverageChanged();
+
 private:
 
     const QStringList wifiTypeKeys {
@@ -231,10 +252,16 @@ private:
         "NR"
     };
 
+    void calculateMPS();
+
     QRegularExpression m_kmlDescriptionSeparator = QRegularExpression("(?<!:)\\s");
     QString m_database = "default";
     QString m_loadedDatabase = "default";
     QStringList m_availableDatabases { "default" };
+    QList<qreal> m_mps;
+    qreal m_mpsAverage = 0;
+
+    QString m_currentPage = "map";
 
     Sector m_sectors[360][180];
     bool m_loading = false;
@@ -265,6 +292,15 @@ private:
     quint64 m_cellularPointsOfInterest = 0;
     quint64 m_wifiPointsOfInterest = 0;
 
+    quint64 m_bluetoothStats = 0;
+    quint64 m_bluetoothLEStats = 0;
+    quint64 m_gsmStats = 0;
+    quint64 m_cdmaStats = 0;
+    quint64 m_wcdmaStats = 0;
+    quint64 m_lteStats = 0;
+    quint64 m_nrStats = 0;
+    quint64 m_wifiStats = 0;
+
     quint64 m_totalPointsOfInterestTemp = 0;
     quint64 m_bluetoothPointsOfInterestTemp = 0;
     quint64 m_cellularPointsOfInterestTemp = 0;
@@ -284,6 +320,16 @@ private:
     Q_PROPERTY(QString errorTitle READ errorTitle WRITE setErrorTitle NOTIFY errorTitleChanged FINAL)
     Q_PROPERTY(QString loadingTitle READ loadingTitle WRITE setLoadingTitle NOTIFY loadingTitleChanged FINAL)
     Q_PROPERTY(QString loadedDatabase READ loadedDatabase WRITE setLoadedDatabase NOTIFY loadedDatabaseChanged FINAL)
+    Q_PROPERTY(QString currentPage READ currentPage WRITE setCurrentPage NOTIFY currentPageChanged FINAL)
+    Q_PROPERTY(quint64 bluetoothStats READ bluetoothStats WRITE setBluetoothStats NOTIFY bluetoothStatsChanged FINAL)
+    Q_PROPERTY(quint64 bluetoothLEStats READ bluetoothLEStats WRITE setBluetoothLEStats NOTIFY bluetoothLEStatsChanged FINAL)
+    Q_PROPERTY(quint64 gsmStats READ gsmStats WRITE setGsmStats NOTIFY gsmStatsChanged FINAL)
+    Q_PROPERTY(quint64 cdmaStats READ cdmaStats WRITE setCdmaStats NOTIFY cdmaStatsChanged FINAL)
+    Q_PROPERTY(quint64 wcdmaStats READ wcdmaStats WRITE setWcdmaStats NOTIFY wcdmaStatsChanged FINAL)
+    Q_PROPERTY(quint64 lteStats READ lteStats WRITE setLteStats NOTIFY lteStatsChanged FINAL)
+    Q_PROPERTY(quint64 nrStats READ nrStats WRITE setNrStats NOTIFY nrStatsChanged FINAL)
+    Q_PROPERTY(quint64 wifiStats READ wifiStats WRITE setWifiStats NOTIFY wifiStatsChanged FINAL)
+    Q_PROPERTY(qreal mpsAverage READ mpsAverage WRITE setMpsAverage NOTIFY mpsAverageChanged FINAL)
 };
 
 Q_DECLARE_METATYPE(LocationModel)

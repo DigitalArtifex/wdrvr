@@ -14,7 +14,9 @@ find_package(Qt6 COMPONENTS QuickControls2)
 find_package(Qt6 COMPONENTS Qml)
 find_package(Qt6 COMPONENTS Positioning)
 find_package(Qt6 COMPONENTS Location)
-find_package(Qt6 COMPONENTS Widgets QuickEffects QuickControls2Fusion )
+find_package(Qt6 COMPONENTS Widgets)
+find_package(Qt6 COMPONENTS QuickEffects)
+find_package(Qt6 COMPONENTS Graphs)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -37,6 +39,7 @@ target_link_libraries(wdrvr PUBLIC
     Qt::Positioning
     Qt::Widgets
     Qt::QuickEffects
+    Qt::Graphs
 )
 
 qt_add_qml_module(appwdrvr
@@ -50,7 +53,6 @@ qt_add_qml_module(appwdrvr
         FloatingMenu.qml
         SettingsPanel.qml
         ChartPage.qml
-        GraphPage.qml
         LoadingScreen.qml
         SOURCES
 )
@@ -82,7 +84,6 @@ set(wdrvr_resource_files
     "FloatingMenu.qml"
     "SettingsPanel.qml"
     "ChartPage.qml"
-    "GraphPage.qml"
     "LoadingScreen.qml"
     "images/white_textured_wallpaper_sq.jpg"
     "images/white_textured_wallpaper_small.png"
