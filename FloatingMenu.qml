@@ -54,6 +54,7 @@ Item {
                             mapSelector.opacity: 1
                             menuBox.color: "#88000000"
                             settingsButton.opacity: 1
+                            chartPageButton.opacity: 1
                         }
                     }
                 ]
@@ -72,6 +73,8 @@ Item {
                         Layout.preferredWidth: 50
                         Layout.rightMargin: 6
                         Layout.leftMargin: 6
+                        icon.width: 24
+                        icon.height: 24
 
                         opacity: 1
                         onClicked:
@@ -97,6 +100,29 @@ Item {
 
                     Button
                     {
+                        id: chartPageButton
+                        Layout.preferredWidth: 50
+                        Layout.preferredHeight: 50
+                        icon.name: "chart"
+                        icon.width: 24
+                        icon.height: 24
+
+                        Layout.minimumHeight: 50
+                        Layout.minimumWidth: 50
+                        Layout.rightMargin: 6
+
+                        onClicked: {
+                            locationModel.currentPage = "chart"
+                        }
+                        opacity: 0
+
+                        transitions: Transition {
+                            PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                        }
+                    }
+
+                    Button
+                    {
                         id: importFileButton
                         icon.name: "open-document"
 
@@ -104,6 +130,8 @@ Item {
                         Layout.minimumWidth: 50
                         Layout.preferredWidth: 50
                         Layout.rightMargin: 6
+                        icon.width: 24
+                        icon.height: 24
 
                         onClicked:
                         {
@@ -155,6 +183,8 @@ Item {
                         Layout.minimumWidth: 50
                         Layout.preferredWidth: 50
                         Layout.rightMargin: 6
+                        icon.width: 24
+                        icon.height: 24
 
                         checkable: true
                         checked: false

@@ -3,7 +3,7 @@
 
 import QtCore
 import QtQuick
-import QtQuick.Controls.Fusion
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtQuick.Dialogs
 
@@ -28,7 +28,7 @@ Item {
 
     Component {
 
-        id: applicationComponent
+        id: mapComponent
         Item {
             property alias map: places.map
 
@@ -49,17 +49,15 @@ Item {
                 mapView: places
             }
 
-            FileDialog {
+            FileDialog
+            {
                 id: fileDialog
                 currentFolder: StandardPaths.standardLocations(StandardPaths.HomeLocation)[0]
-                nameFilters: ["WiGLE XML files (*.kml)"]
+                nameFilters: ["WiGLE KML files (*.kml)", "WiGLE CSV files (*.csv)"]
+
                 onAccepted:
                 {
-                    locationModel.openFile(selectedFile, true)
-
-                    // var cord = view.map.toCoordinate(Qt.point(0, view.map.height / 2), true)
-                    // var cord2 = view.map.toCoordinate(Qt.point(view.map.width / 2, view.map.height / 2), true)
-                    // locationModel.getLocations(cord2, cord.distanceTo(cord2), view.map.zoomLevel / view.map.maximumZoomLevel)
+                    locationModel.openFile(selectedFile)
                 }
 
                 onRejected:
@@ -106,26 +104,42 @@ Item {
         }
     }
 
+    Component
+    {
+        id: chartComponent
+
+        ChartPage {}
+    }
+
     Loader {
+        id: pageLoader
         anchors.fill: parent
         active: permission.status === Qt.PermissionStatus.Granted
-        sourceComponent: applicationComponent
+        sourceComponent: mapComponent
     }
 
     Settings {
         id: settings
         property string iconTheme: "win11"
         property string database: "default";
-        // property alias y: parent.y
-        // property alias width: parent.width
-        // property alias height: parent.height
     }
 
     Component.onCompleted: {
         locationModel.load(settings.database)
     }
 
-    // Component.onDestruction: {
-    //     settings.iconTheme = Icon.themeName
-    // }
+    Connections
+    {
+        target: locationModel
+
+        function onCurrentPageChanged()
+        {
+            if(locationModel.currentPage === "map")
+                pageLoader.sourceComponent = mapComponent
+            else if(locationModel.currentPage === "chart")
+                pageLoader.sourceComponent = chartComponent
+            if(locationModel.currentPage === "graph")
+                pageLoader.sourceComponent = graphComponent
+        }
+    }
 }

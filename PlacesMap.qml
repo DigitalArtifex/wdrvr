@@ -55,25 +55,34 @@ Item
         //! [Initialize Plugin]
 
         //! [Current Location]
-        PositionSource
-        {
-            id: positionSource
-            property variant lastSearchPosition: QtPositioning.coordinate(settings.latitude, settings.longitude) //Initialized/Fallback to Oslo
-            active: true
-            updateInterval: 1000 // 2 mins
-            onPositionChanged:  {
-            }
-        }
+        // PositionSource
+        // {
+        //     id: positionSource
+        //     property variant lastSearchPosition: QtPositioning.coordinate(settings.latitude, settings.longitude) //Initialized/Fallback to Oslo
+        //     active: true
+        //     updateInterval: 1000 // 2 mins
+        //     onPositionChanged:  {
+        //         var distance = positionSource.lastSearchPosition.distanceTo(view.map.center)
+        //         if (distance > 100) {
+        //             // 500m from last performed food search
+        //             positionSource.lastSearchPosition = view.map.center
+        //             locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
+        //             settings.latitude = view.map.center.latitude
+        //             settings.longitude = view.map.center.longitude
+        //         }
+        //     }
+        // }
         //! [Current Location]
 
         //! [Places MapItemView]
         MapView
         {
+            property variant lastPosition: QtPositioning.coordinate(settings.latitude, settings.longitude)
+
             id: view
             anchors.fill: parent
             map.plugin: mapPlugin;
-            map.center: positionSource.lastSearchPosition
-            map.zoomLevel: 13
+            map.zoomLevel: settings.zoomLevel
             map.color: "#444444"
             map.copyrightsVisible: false
 
@@ -83,38 +92,45 @@ Item
 
             map.onZoomLevelChanged:
             {
+                settings.zoomLevel = view.map.zoomLevel
                 locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
             }
 
             map.onActiveMapTypeChanged: settings.mapType = map.supportedMapTypes.indexOf(map.activeMapType)
+
+            map.onCenterChanged: {
+                var distance = lastPosition.distanceTo(view.map.center)
+                if (distance > 500) {
+                    lastPosition = view.map.center
+                    locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
+                    settings.latitude = view.map.center.latitude
+                    settings.longitude = view.map.center.longitude
+                }
+            }
 
             MapItemView
             {
                 model: locationModel
                 parent: view.map
 
-                MouseArea
-                {
-                    anchors.fill: parent
-                    property variant startCoordinate
-                    property bool panning: false
+                // MouseArea
+                // {
+                //     anchors.fill: parent
+                //     property variant startCoordinate
+                //     property bool panning: false
 
-                    onPressed:
-                    {
-                         startCoordinate = view.map.center
-                         panning = true
-                    }
-
-                    onPositionChanged:
-                    {
-                        var distance = positionSource.lastSearchPosition.distanceTo(view.map.center)
-                        if (distance > 500) {
-                            // 500m from last performed food search
-                            positionSource.lastSearchPosition = view.map.center
-                            locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
-                        }
-                    }
-                }
+                //     onPositionChanged:
+                //     {
+                //         var distance = positionSource.lastSearchPosition.distanceTo(view.map.center)
+                //         if (distance > 100) {
+                //             // 500m from last performed food search
+                //             positionSource.lastSearchPosition = view.map.center
+                //             locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
+                //             settings.latitude = view.map.center.latitude
+                //             settings.longitude = view.map.center.longitude
+                //         }
+                //     }
+                // }
                 delegate: MapQuickItem
                 {
                     coordinate: QtPositioning.coordinate(location.latitude, location.longitude)
@@ -223,5 +239,6 @@ Item
         property string database: "default";
         property double latitude: 59.93
         property double longitude: 10.76
+        property int zoomLevel: 10
     }
 }

@@ -16,8 +16,8 @@ Item {
             id: legendPanel
 
             Layout.preferredWidth: 320
-            Layout.preferredHeight: 180
-            Layout.minimumHeight: 160
+            Layout.preferredHeight: 100
+            Layout.minimumHeight: 100
             Layout.minimumWidth: 90
             Layout.alignment: Qt.AlignBottom | Qt.AlignRight
             Layout.rightMargin: 6
@@ -334,6 +334,21 @@ Item {
 
                     RowLayout
                     {
+
+                        // Button
+                        // {
+                        //     id: graphPageButton
+                        //     Layout.preferredWidth: 50
+                        //     Layout.preferredHeight: 50
+                        //     icon.name: "graph"
+                        //     icon.width: 32
+                        //     icon.height: 32
+
+                        //     onClicked: {
+                        //         locationModel.currentPage = "graph"
+                        //     }
+                        // }
+
                         // anchors.fill: parent
                         // Rectangle
                         // {

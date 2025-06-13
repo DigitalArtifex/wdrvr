@@ -136,6 +136,11 @@ void LocationModel::parseCSV(QString fileName)
     m_wifiPointsOfInterestTemp = m_wifiPointsOfInterest;
 
     auto result = QtConcurrent::run([this, fileName] {
+        QDateTime first = QDateTime::fromMSecsSinceEpoch(0);
+        QDateTime last = QDateTime::fromMSecsSinceEpoch(0);
+
+        quint64 imported = 0;
+
         QFile file(fileName);
 
         qDebug() << "Opening file" << fileName;
@@ -189,11 +194,12 @@ void LocationModel::parseCSV(QString fileName)
             capabilitiesString.remove("]");
 
             QStringList capabilities = capabilitiesString.split(' ', Qt::SkipEmptyParts);
+            LocationData data;
 
             //[BSSID],[SSID],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
             if(wifiTypeKeys.contains(type))
             {
-                LocationData data {
+                data = {
                     segments[10].toDouble(),
                     1,
                     QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
@@ -212,14 +218,12 @@ void LocationModel::parseCSV(QString fileName)
                     segments[11].split(' ', Qt::SkipEmptyParts)
                 };
                 ++m_wifiPointsOfInterestTemp;
-
-                append(data);
             }
 
             //[BD_ADDR],[Device Name],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
             else if(cellTypeKeys.contains(type))
             {
-                LocationData data {
+                data = {
                     segments[10].toDouble(),
                     1,
                     QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
@@ -237,15 +241,24 @@ void LocationModel::parseCSV(QString fileName)
                     capabilities,
                     segments[11].split(' ', Qt::SkipEmptyParts)
                 };
-                ++m_bluetoothPointsOfInterestTemp;
+                ++m_cellularPointsOfInterestTemp;
 
-                append(data);
+                if(data.type.toLower() == "lte")
+                    ++m_lteStats;
+                else if(data.type.toLower() == "nr")
+                    ++m_nrStats;
+                else if(data.type.toLower() == "gsm")
+                    ++m_gsmStats;
+                else if(data.type.toLower() == "wcdma")
+                    ++m_wcdmaStats;
+                else if(data.type.toLower() == "cdma")
+                    ++m_cdmaStats;
             }
 
             //[BD_ADDR],[Device Name],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
             else if(bluetoothTypeKeys.contains(type))
             {
-                LocationData data {
+                data = {
                     segments[10].toDouble(),
                     1,
                     QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
@@ -263,13 +276,30 @@ void LocationModel::parseCSV(QString fileName)
                     capabilities,
                     segments[11].split(' ', Qt::SkipEmptyParts)
                 };
+
                 ++m_bluetoothPointsOfInterestTemp;
 
-                append(data);
+                if(data.type.toLower() == "bt")
+                    ++m_bluetoothStats;
+                else if(data.type.toLower() == "ble")
+                    ++m_bluetoothLEStats;
+
             }
 
+            if(first == QDateTime::fromMSecsSinceEpoch(0) || data.timestamp < first)
+                first = data.timestamp;
+            if(last == QDateTime::fromMSecsSinceEpoch(0) || data.timestamp > last)
+                last = data.timestamp;
+
+            append(data);
             setProgress(file.pos() / file.size());
+
+            ++imported; //for mps
         }
+
+        quint64 totalSecs = last.toSecsSinceEpoch() - first.toSecsSinceEpoch();
+
+        m_mps.append(static_cast<qreal>(imported) / totalSecs);
 
         file.close();
     });
@@ -277,6 +307,19 @@ void LocationModel::parseCSV(QString fileName)
     watcher.setFuture(result);
 
     connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+
+        calculateMPS();
+
+        emit lteStatsChanged();
+        emit bluetoothStatsChanged();
+        emit bluetoothLEStatsChanged();
+        emit gsmStatsChanged();
+        emit cdmaStatsChanged();
+        emit wcdmaStatsChanged();
+        emit lteStatsChanged();
+        emit nrStatsChanged();
+        emit wifiStatsChanged();
+
         setTotalPointsOfInterest(m_totalPointsOfInterestTemp);
         setBluetoothPointsOfInterest(m_bluetoothPointsOfInterestTemp);
         setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
@@ -291,6 +334,8 @@ void LocationModel::parseKML(QString fileName)
     startLoading(QString("Importing file into database `%1`").arg(m_loadedDatabase));
 
     auto result = QtConcurrent::run([this, fileName] {
+        QDateTime first = QDateTime::fromMSecsSinceEpoch(0);
+        QDateTime last = QDateTime::fromMSecsSinceEpoch(0);
 
         if(!m_threadMutex.tryLock(QDeadlineTimer(1500)))
             return;
@@ -319,6 +364,8 @@ void LocationModel::parseKML(QString fileName)
         m_bluetoothPointsOfInterestTemp = m_bluetoothPointsOfInterest;
         m_cellularPointsOfInterestTemp = m_cellularPointsOfInterest;
         m_wifiPointsOfInterestTemp = m_wifiPointsOfInterest;
+
+        quint64 imported = 0;
 
         while(!xml.atEnd())
         {
@@ -370,16 +417,39 @@ void LocationModel::parseKML(QString fileName)
 
                                 if(key == "type")
                                 {
-                                    if(wifiTypeKeys.contains(value))
-                                        ++m_wifiPointsOfInterestTemp;
-                                    else if(bluetoothTypeKeys.contains(value))
-                                        ++m_bluetoothPointsOfInterestTemp;
-                                    else if(cellTypeKeys.contains(value))
-                                        ++m_cellularPointsOfInterestTemp;
-                                    else
-                                        qDebug() << "Uknown Type Key" << value;
-
                                     data.type = value;
+
+                                    if(bluetoothTypeKeys.contains(data.type))
+                                    {
+                                        if(data.type.toLower() == "bt")
+                                            ++m_bluetoothStats;
+                                        else if(data.type.toLower() == "ble")
+                                            ++m_bluetoothLEStats;
+
+                                        ++m_bluetoothPointsOfInterestTemp;
+                                    }
+
+                                    else if(cellTypeKeys.contains(data.type))
+                                    {
+                                        if(data.type.toLower() == "lte")
+                                            ++m_lteStats;
+                                        else if(data.type.toLower() == "nr")
+                                            ++m_nrStats;
+                                        else if(data.type.toLower() == "gsm")
+                                            ++m_gsmStats;
+                                        else if(data.type.toLower() == "wcdma")
+                                            ++m_wcdmaStats;
+                                        else if(data.type.toLower() == "cdma")
+                                            ++m_cdmaStats;
+
+                                        ++m_cellularPointsOfInterestTemp;
+                                    }
+
+                                    else if(wifiTypeKeys.contains(data.type) || data.type.isEmpty())
+                                    {
+                                        ++m_wifiStats;
+                                        ++m_wifiPointsOfInterestTemp;
+                                    }
                                 }
                                 else if(key == "encryption")
                                     data.encryption = value;
@@ -393,8 +463,11 @@ void LocationModel::parseKML(QString fileName)
                                 }
                                 else if(key == "frequency")
                                     data.frequency = value.toDouble();
-                                else if(key == "time")
-                                    data.timestamp = QDateTime::fromString(value);
+                                else if(key == "time")//"2025-05-29T08:45:33.000-07:00"
+                                {
+                                    data.timestamp = QDateTime::fromString(value,QString("yyyy-MM-ddThh:mm:ss.zzzt"));
+                                    data.timestamp;
+                                }
                                 else if(key == "signal")
                                     data.signal = value.toDouble();
                                 else if(key == "network id")
@@ -447,12 +520,22 @@ void LocationModel::parseKML(QString fileName)
                         data.open = xml.readElementText().toInt();
                 }
 
+                if(first == QDateTime::fromMSecsSinceEpoch(0) || data.timestamp < first)
+                    first = data.timestamp;
+                if(last == QDateTime::fromMSecsSinceEpoch(0) || data.timestamp > last)
+                    last = data.timestamp;
+
                 this->append(data);
                 ++m_totalPointsOfInterestTemp;
+                ++imported;
             }
         }
 
         file.close();
+
+        quint64 totalSecs = last.toSecsSinceEpoch() - first.toSecsSinceEpoch();
+
+        m_mps.append(static_cast<qreal>(imported) / totalSecs);
 
         if(xml.hasError())
         {
@@ -471,6 +554,18 @@ void LocationModel::parseKML(QString fileName)
     watcher.setFuture(result);
 
     connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+        calculateMPS();
+
+        emit lteStatsChanged();
+        emit bluetoothStatsChanged();
+        emit bluetoothLEStatsChanged();
+        emit gsmStatsChanged();
+        emit cdmaStatsChanged();
+        emit wcdmaStatsChanged();
+        emit lteStatsChanged();
+        emit nrStatsChanged();
+        emit wifiStatsChanged();
+
         setTotalPointsOfInterest(m_totalPointsOfInterestTemp);
         setBluetoothPointsOfInterest(m_bluetoothPointsOfInterestTemp);
         setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
@@ -595,6 +690,16 @@ void LocationModel::save()
     watcher.setFuture(QtConcurrent::run([this](){
         QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + m_loadedDatabase);
 
+        QFile mpsFile(databaseDirectory.absolutePath() + QDir::separator() + "mps.dat");
+
+        if(mpsFile.open(QFile::ReadWrite))
+        {
+            for(const qreal &value : std::as_const(m_mps))
+                mpsFile.write(QString::number(value).toUtf8() + "\n");
+        }
+
+        mpsFile.close();
+
         quint64 totalOps = 360 * 180;
         for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
         {
@@ -667,9 +772,38 @@ void LocationModel::load(QString database)
     m_totalPointsOfInterestTemp = 0;
     m_cellularPointsOfInterestTemp = 0;
 
+    m_bluetoothStats = 0;
+    m_bluetoothLEStats = 0;
+    m_gsmStats = 0;
+    m_cdmaStats = 0;
+    m_wcdmaStats = 0;
+    m_lteStats = 0;
+    m_nrStats = 0;
+    m_wifiStats = 0;
+
     watcher.disconnect();
     watcher.setFuture(QtConcurrent::run([this, database](){
         QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + database);
+
+        QFile mpsFile(databaseDirectory.absolutePath() + QDir::separator() + "mps.dat");
+
+        if(mpsFile.open(QFile::ReadOnly))
+        {
+            while(!mpsFile.atEnd())
+            {
+                QString line = mpsFile.readLine();
+                bool converted = false;
+
+                qreal value = line.toDouble(&converted);
+
+                if(converted)
+                    m_mps.append(value);
+            }
+        }
+
+        mpsFile.close();
+
+        calculateMPS();
 
         quint128 totalOps = 0;
 
@@ -732,19 +866,37 @@ void LocationModel::load(QString database)
                         roiString.split("][", Qt::SkipEmptyParts)
                     };
 
-                    if(data.type.toLower() == "wifi")
-                        ++m_wifiPointsOfInterestTemp;
-                    else if(data.type.toLower() == "bt" || data.type.toLower() == "ble")
-                        ++m_bluetoothPointsOfInterestTemp;
-                    else if(data.type.toLower() == "lte" || data.type.toLower() == "nr" || data.type.toLower() == "gsm" || data.type.toLower() == "wcdma")
-                        ++m_cellularPointsOfInterestTemp;
-                    else if(!data.type.isEmpty())
-                        qDebug() << "Uknown Type Key" << data.type;
-                    else
+                    if(wifiTypeKeys.contains(data.type) || data.type.isEmpty())
                     {
-                        data.type = "WIFI";
                         ++m_wifiPointsOfInterestTemp;
+                        ++m_wifiStats;
                     }
+                    else if(bluetoothTypeKeys.contains(data.type))
+                    {
+                        if(data.type.toLower() == "bt")
+                            ++m_bluetoothStats;
+                        else if(data.type.toLower() == "ble")
+                            ++m_bluetoothLEStats;
+
+                        ++m_bluetoothPointsOfInterestTemp;
+                    }
+                    else if(cellTypeKeys.contains(data.type))
+                    {
+                        if(data.type.toLower() == "lte")
+                            ++m_lteStats;
+                        else if(data.type.toLower() == "nr")
+                            ++m_nrStats;
+                        else if(data.type.toLower() == "gsm")
+                            ++m_gsmStats;
+                        else if(data.type.toLower() == "wcdma")
+                            ++m_wcdmaStats;
+                        else if(data.type.toLower() == "cdma")
+                            ++m_cdmaStats;
+
+                        ++m_cellularPointsOfInterestTemp;
+                    }
+                    else
+                        qDebug() << "Uknown Type Key" << data.type;
 
                     ++m_totalPointsOfInterestTemp;
 
@@ -775,6 +927,17 @@ void LocationModel::load(QString database)
     }));
 
     watcher.connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
+
+        emit lteStatsChanged();
+        emit bluetoothStatsChanged();
+        emit bluetoothLEStatsChanged();
+        emit gsmStatsChanged();
+        emit cdmaStatsChanged();
+        emit wcdmaStatsChanged();
+        emit lteStatsChanged();
+        emit nrStatsChanged();
+        emit wifiStatsChanged();
+
         setTotalPointsOfInterest(m_totalPointsOfInterestTemp);
         setBluetoothPointsOfInterest(m_bluetoothPointsOfInterestTemp);
         setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
@@ -847,7 +1010,7 @@ LocationDataNode *groupPoints(LocationDataNode *node, QGeoShape area,  qreal clu
         viewportNodeIteratorA = viewportNodeIteratorA->next;
     }
 
-    qDebug() << "Grouped" << groups << "within" << clusterDistance;
+    // qDebug() << "Grouped" << groups << "within" << clusterDistance;
 
     return copiedHead;
 }
@@ -856,7 +1019,7 @@ void LocationModel::getPointsInRect(QGeoShape area, qreal zoomLevel)
 {
     auto result = QtConcurrent::run([this, area, zoomLevel]
     {
-        if(!m_threadMutex.tryLock(QDeadlineTimer(250)))
+        if(!m_threadMutex.tryLock(QDeadlineTimer(1250)))
             return;
 
         qreal timeStart = QDateTime::currentMSecsSinceEpoch();
@@ -970,6 +1133,43 @@ void LocationModel::errorOccurred(QString title, QString message)
     m_errorTitle = title;
 
     emit error();
+}
+
+void LocationModel::calculateMPS()
+{
+    qreal total = 0;
+
+    for(const qreal &value : std::as_const(m_mps))
+        total += value;
+
+    setMpsAverage(total / m_mps.count());
+}
+
+qreal LocationModel::mpsAverage() const
+{
+    return m_mpsAverage;
+}
+
+void LocationModel::setMpsAverage(qreal mpsAverage)
+{
+    if (qFuzzyCompare(m_mpsAverage, mpsAverage))
+        return;
+    m_mpsAverage = mpsAverage;
+    emit mpsAverageChanged();
+}
+
+QString LocationModel::currentPage() const
+{
+    return m_currentPage;
+}
+
+void LocationModel::setCurrentPage(const QString &currentPage)
+{
+    if (m_currentPage == currentPage)
+        return;
+
+    m_currentPage = currentPage;
+    emit currentPageChanged();
 }
 
 QString LocationModel::loadedDatabase() const
@@ -1275,6 +1475,111 @@ QTimer *LocationModel::createUpdateTimer()
     timer->connect(timer, &QTimer::timeout,this, [this](){updateProgress();});
 
     return timer;
+}
+
+quint64 LocationModel::wifiStats() const
+{
+    return m_wifiStats;
+}
+
+void LocationModel::setWifiStats(quint64 wifiStats)
+{
+    if (m_wifiStats == wifiStats)
+        return;
+
+    m_wifiStats = wifiStats;
+    emit wifiStatsChanged();
+}
+
+quint64 LocationModel::nrStats() const
+{
+    return m_nrStats;
+}
+
+void LocationModel::setNrStats(quint64 nrStats)
+{
+    if (m_nrStats == nrStats)
+        return;
+    m_nrStats = nrStats;
+    emit nrStatsChanged();
+}
+
+quint64 LocationModel::lteStats() const
+{
+    return m_lteStats;
+}
+
+void LocationModel::setLteStats(quint64 lteStats)
+{
+    if (m_lteStats == lteStats)
+        return;
+    m_lteStats = lteStats;
+    emit lteStatsChanged();
+}
+
+quint64 LocationModel::wcdmaStats() const
+{
+    return m_wcdmaStats;
+}
+
+void LocationModel::setWcdmaStats(quint64 wcdmaStats)
+{
+    if (m_wcdmaStats == wcdmaStats)
+        return;
+    m_wcdmaStats = wcdmaStats;
+    emit wcdmaStatsChanged();
+}
+
+quint64 LocationModel::cdmaStats() const
+{
+    return m_cdmaStats;
+}
+
+void LocationModel::setCdmaStats(quint64 cdmaStats)
+{
+    if (m_cdmaStats == cdmaStats)
+        return;
+    m_cdmaStats = cdmaStats;
+    emit cdmaStatsChanged();
+}
+
+quint64 LocationModel::gsmStats() const
+{
+    return m_gsmStats;
+}
+
+void LocationModel::setGsmStats(quint64 gsmStats)
+{
+    if (m_gsmStats == gsmStats)
+        return;
+    m_gsmStats = gsmStats;
+    emit gsmStatsChanged();
+}
+
+quint64 LocationModel::bluetoothLEStats() const
+{
+    return m_bluetoothLEStats;
+}
+
+void LocationModel::setBluetoothLEStats(quint64 bluetoothLEStats)
+{
+    if (m_bluetoothLEStats == bluetoothLEStats)
+        return;
+    m_bluetoothLEStats = bluetoothLEStats;
+    emit bluetoothLEStatsChanged();
+}
+
+quint64 LocationModel::bluetoothStats() const
+{
+    return m_bluetoothStats;
+}
+
+void LocationModel::setBluetoothStats(quint64 bluetoothStats)
+{
+    if (m_bluetoothStats == bluetoothStats)
+        return;
+    m_bluetoothStats = bluetoothStats;
+    emit bluetoothStatsChanged();
 }
 
 QString LocationModel::loadingTitle() const

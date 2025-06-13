@@ -16,6 +16,8 @@
         <file>icons/win11/scalable/export.svg</file>
         <file>icons/win11/scalable/open.svg</file>
         <file>icons/win11/scalable/create.svg</file>
+        <file>icons/win11/scalable/chart.svg</file>
+        <file>icons/win11/scalable/graph.svg</file>
         <file>icons/win11/scalable/disk-partition.svg</file>
         <file>icons/win11/scalable/applications/wdrvr.svg</file>
         <file>icons/win11/index.theme</file>
