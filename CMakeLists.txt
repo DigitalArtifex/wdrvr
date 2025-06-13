@@ -40,6 +40,7 @@ target_link_libraries(wdrvr PUBLIC
     Qt::Widgets
     Qt::QuickEffects
     Qt::Graphs
+    -Wl,--stack,16777216
 )
 
 qt_add_qml_module(appwdrvr
