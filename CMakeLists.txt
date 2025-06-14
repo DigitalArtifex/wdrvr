@@ -40,8 +40,14 @@ target_link_libraries(wdrvr PUBLIC
     Qt::Widgets
     Qt::QuickEffects
     Qt::Graphs
-    -Wl,--stack,16777216
 )
+
+#increase windows stack size to 16mb
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    target_link_libraries(wdrvr PUBLIC
+        -Wl,--stack,16777216
+    )
+endif()
 
 qt_add_qml_module(appwdrvr
     URI appwdrvr

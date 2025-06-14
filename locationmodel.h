@@ -59,6 +59,23 @@ struct LocationData
     qreal frequency;
     QStringList capabilities;
     QStringList rois;
+
+    QColor color = QColor(0,0,128,200);
+    qreal dotSize = 20;
+
+    LocationDataNode *children = nullptr;
+    LocationDataNode *lastChild = nullptr;
+
+    ~LocationData();
+
+    inline bool operator > (const LocationData &other)
+    {
+        return coordinates.distanceTo(QGeoCoordinate(-90,-180)) > other.coordinates.distanceTo(QGeoCoordinate(-90,-180));
+    }
+    inline bool operator < (const LocationData &other)
+    {
+        return coordinates.distanceTo(QGeoCoordinate(-90,-180)) < other.coordinates.distanceTo(QGeoCoordinate(-90,-180));
+    }
 };
 
 Q_DECLARE_METATYPE(LocationData)
@@ -89,7 +106,9 @@ public:
         EncryptionRole,
         TimestampRole,
         AccuracyRole,
-        SignalRole
+        SignalRole,
+        ColorRole,
+        SizeRole
     };
 
     Q_ENUM(LocationDataRole)
@@ -251,6 +270,8 @@ private:
         "LTE",
         "NR"
     };
+
+    QVector<QString> m_ids;
 
     void calculateMPS();
 

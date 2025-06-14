@@ -1,5 +1,17 @@
 #include "locationmodel.h"
 
+
+LocationData::~LocationData()
+{
+    // while(children)
+    // {
+    //     LocationDataNode *node = children;
+    //     children = children->next;
+
+    //     delete node;
+    // }
+}
+
 LocationModel::LocationModel(QObject *parent)
     : QAbstractListModel{parent}
 {
@@ -90,6 +102,12 @@ QVariant LocationModel::data(const QModelIndex &index, int role) const
     case SignalRole:
         data = QVariant::fromValue<qreal>(m_filteredData[index.row()].signal);
         break;
+    case ColorRole:
+        data = QVariant::fromValue<QColor>(m_filteredData[index.row()].color);
+        break;
+    case SizeRole:
+        data = QVariant::fromValue<qreal>(m_filteredData[index.row()].dotSize);
+        break;
     }
 
     return data;
@@ -107,7 +125,9 @@ QHash<int, QByteArray> LocationModel::roleNames() const
         { EncryptionRole, "encryption" },
         { TimestampRole, "timestamp" },
         { AccuracyRole, "accuracy" },
-        { SignalRole, "signal" }
+        { SignalRole, "signal" },
+        { ColorRole, "dotColor" },
+        { SizeRole, "dotSize" }
     };
 
     return roleMap;
@@ -502,7 +522,7 @@ void LocationModel::parseKML(QString fileName)
                                 }
                                 else if(key == "signal")
                                     data.signal = value.toDouble();
-                                else if(key == "network id")
+                                else if(key == "network id" || key == "id")
                                     data.id = value;
                             }
                         }
@@ -609,12 +629,15 @@ void LocationModel::parseKML(QString fileName)
 
 void LocationModel::openFile(QString fileName)
 {
+#ifdef Q_OS_WIN
     //damn windows
     if(fileName.startsWith("file:///", Qt::CaseInsensitive))
         fileName.remove(0,8);
-
+#endif
+#ifdef Q_OS_LINUX
     if(fileName.startsWith("file://", Qt::CaseInsensitive))
         fileName.remove(0,7);
+#endif
 
     if(fileName.endsWith(".kml", Qt::CaseInsensitive))
         parseKML(fileName);
@@ -642,6 +665,11 @@ void LocationModel::setProgress(qreal progress)
 
 void LocationModel::append(const LocationData &data)
 {
+    if(m_ids.contains(data.id))
+        return;
+
+    m_ids.append(data.id);
+
     int latitudeIndex = std::floor(data.coordinates.latitude() + 90);
     int longitudeIndex = std::floor(data.coordinates.longitude() + 180);
 
@@ -856,7 +884,7 @@ void LocationModel::load(QString database)
         {
             for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
             {
-                m_sectors[longitudeIndex][latitudeIndex].mutex.lock();
+                //m_sectors[longitudeIndex][latitudeIndex].mutex.lock();
 
                 QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString::number(longitudeIndex) + QDir::separator() + QString::number(latitudeIndex) + QDir::separator() + "0.csv");
 
@@ -934,17 +962,22 @@ void LocationModel::load(QString database)
 
                     ++m_totalPointsOfInterestTemp;
 
-                    if(!node)
-                    {
-                        m_sectors[longitudeIndex][latitudeIndex].head = new LocationDataNode(data);
-                        node = m_sectors[longitudeIndex][latitudeIndex].head;
-                    }
+                    if(m_ids.contains(data.id))
+                        continue;
 
-                    else
-                    {
-                        node->next = new LocationDataNode(data);
-                        node = node->next;
-                    }
+                    append(data);
+
+                    // if(!node)
+                    // {
+                    //     m_sectors[longitudeIndex][latitudeIndex].head = new LocationDataNode(data);
+                    //     node = m_sectors[longitudeIndex][latitudeIndex].head;
+                    // }
+
+                    // else
+                    // {
+                    //     node->next = new LocationDataNode(data);
+                    //     node = node->next;
+                    // }
 
                     completedOps += file.pos();
                 }
@@ -954,7 +987,7 @@ void LocationModel::load(QString database)
                 if(totalOps > 0)
                     setProgress(completedOps / totalOps);
 
-                m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
+                //m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
                 setLoadedDatabase(database);
             }
         }
@@ -1011,16 +1044,15 @@ LocationDataNode *groupPoints(LocationDataNode *node, QGeoShape area,  qreal clu
 
     //group POI clusters
     LocationDataNode *viewportNodeIteratorA = copiedHead;
-    quint64 groups = 0;
 
     while(viewportNodeIteratorA)
     {
         LocationDataNode *viewportNodeIteratorB = viewportNodeIteratorA->next;
         LocationDataNode *viewportNodeIteratorC = viewportNodeIteratorA; //last referenced for splicing
+        QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.latitude(), viewportNodeIteratorA->data.coordinates.longitude());
 
         while(viewportNodeIteratorB)
         {
-            QGeoCoordinate coordA(viewportNodeIteratorA->data.coordinates.latitude(), viewportNodeIteratorA->data.coordinates.longitude());
             QGeoCoordinate coordB(viewportNodeIteratorB->data.coordinates.latitude(), viewportNodeIteratorB->data.coordinates.longitude());
             qreal coordDistance = coordA.distanceTo(coordB);
 
@@ -1028,11 +1060,29 @@ LocationDataNode *groupPoints(LocationDataNode *node, QGeoShape area,  qreal clu
             {
                 viewportNodeIteratorC->next = viewportNodeIteratorB->next;
                 delete viewportNodeIteratorB;
+                // if(!viewportNodeIteratorC->data.children)
+                // {
+                //     viewportNodeIteratorC->data.children = viewportNodeIteratorB;
+                //     viewportNodeIteratorC->data.lastChild = viewportNodeIteratorB;
+                // }
+                // else
+                // {
+                //     viewportNodeIteratorC->data.lastChild->next = viewportNodeIteratorB;
+                //     viewportNodeIteratorC->data.lastChild = viewportNodeIteratorC->data.lastChild->next;
+                // }
 
                 viewportNodeIteratorB = viewportNodeIteratorC->next;
 
+                //set the size and color for the heatmap
+                if(viewportNodeIteratorC->data.color.green() > 16)
+                    viewportNodeIteratorC->data.color.setGreen(viewportNodeIteratorC->data.color.green() - 16);
+
+                if(viewportNodeIteratorC->data.color.red() < (249))
+                    viewportNodeIteratorC->data.color.setRed(viewportNodeIteratorC->data.color.red() + 16);
+                else if(viewportNodeIteratorC->data.color.blue() < 249)
+                    viewportNodeIteratorC->data.color.setBlue(viewportNodeIteratorC->data.color.blue() + 16);
+
                 --count;
-                ++groups;
 
                 continue;
             }
@@ -1053,7 +1103,7 @@ void LocationModel::getPointsInRect(QGeoShape area, qreal zoomLevel)
 {
     auto result = QtConcurrent::run([this, area, zoomLevel]
     {
-        if(!m_threadMutex.tryLock(QDeadlineTimer(1250)))
+        if(!m_threadMutex.tryLock(QDeadlineTimer(250)))
             return;
 
         qreal timeStart = QDateTime::currentMSecsSinceEpoch();
@@ -1107,16 +1157,20 @@ void LocationModel::getPointsInRect(QGeoShape area, qreal zoomLevel)
         resetDataModel();
 
         quint64 index = 0;
-        beginInsertRows(QModelIndex(), 0, totalNodes - 1);
+        // beginInsertRows(QModelIndex(), 0, totalNodes - 1);
         while(headNode)
         {
+            beginInsertRows(QModelIndex(), index, index + 1);
+
             LocationDataNode *nodeToDelete = headNode;
             m_filteredData.append(headNode->data);
             headNode = headNode->next;
 
             delete nodeToDelete;
+            endInsertRows();
+            ++index;
         }
-        endInsertRows();
+        // endInsertRows();
 
         // for(const QFuture<LocationDataNode*> &future : std::as_const(futures))
         // {
