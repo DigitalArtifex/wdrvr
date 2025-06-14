@@ -76,6 +76,10 @@ Item {
                         icon.width: 24
                         icon.height: 24
 
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 100
+                        ToolTip.text: "Menu"
+
                         opacity: 1
                         onClicked:
                         {
@@ -96,6 +100,16 @@ Item {
                         transitions: Transition {
                             PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
                         }
+
+                        Connections {
+                            target: Icon
+
+                            function onThemeNameChanged()
+                            {
+                                menuButton.icon.name = "";
+                                menuButton.icon.name = "menu";
+                            }
+                        }
                     }
 
                     Button
@@ -111,6 +125,10 @@ Item {
                         Layout.minimumWidth: 50
                         Layout.rightMargin: 6
 
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 100
+                        ToolTip.text: "View Chart"
+
                         onClicked: {
                             locationModel.currentPage = "chart"
                         }
@@ -119,12 +137,22 @@ Item {
                         transitions: Transition {
                             PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
                         }
+
+                        Connections {
+                            target: Icon
+
+                            function onThemeNameChanged()
+                            {
+                                chartPageButton.icon.name = "";
+                                chartPageButton.icon.name = "chart";
+                            }
+                        }
                     }
 
                     Button
                     {
                         id: importFileButton
-                        icon.name: "open-document"
+                        icon.name: "open"
 
                         Layout.minimumHeight: 50
                         Layout.minimumWidth: 50
@@ -132,6 +160,10 @@ Item {
                         Layout.rightMargin: 6
                         icon.width: 24
                         icon.height: 24
+
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 100
+                        ToolTip.text: "Import File"
 
                         onClicked:
                         {
@@ -144,6 +176,16 @@ Item {
 
                         transitions: Transition {
                             PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                        }
+
+                        Connections {
+                            target: Icon
+
+                            function onThemeNameChanged()
+                            {
+                                importFileButton.icon.name = "";
+                                importFileButton.icon.name = "open";
+                            }
                         }
                     }
 
@@ -189,6 +231,10 @@ Item {
                         checkable: true
                         checked: false
 
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 100
+                        ToolTip.text: "Settings"
+
                         states:
                         [
                             State {
@@ -210,6 +256,16 @@ Item {
 
                         transitions: Transition {
                             PropertyAnimation { properties: "x,y,width,height,opacity,color"; easing.type: Easing.InOutQuad }
+                        }
+
+                        Connections {
+                            target: Icon
+
+                            function onThemeNameChanged()
+                            {
+                                settingsButton.icon.name = "";
+                                settingsButton.icon.name = "settings";
+                            }
                         }
                     }
                 }

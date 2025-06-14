@@ -100,7 +100,7 @@ Item
 
             map.onCenterChanged: {
                 var distance = lastPosition.distanceTo(view.map.center)
-                if (distance > 500) {
+                if (distance > (500 *(1 - (map.zoomLevel / map.maximumZoomLevel)))) {
                     lastPosition = view.map.center
                     locationModel.getPointsInRect(view.map.visibleRegion, view.map.zoomLevel / view.map.maximumZoomLevel);
                     settings.latitude = view.map.center.latitude
@@ -138,11 +138,22 @@ Item
                     anchorPoint.x: marker.width * 0.5
                     anchorPoint.y: marker.height
 
-                    sourceItem: ColumnLayout
+                    sourceItem: Rectangle
                     {
-                        Image
+                        Rectangle
                         {
                             id: marker
+                            radius: (10 * (map.zoomLevel / 2)) / 2
+                            width: 10 * (map.zoomLevel / 2)
+                            height: 10 * (map.zoomLevel / 2)
+                            color: "transparent"
+                        }
+
+                        Image
+                        {
+                            id: image
+                            anchors.horizontalCenter: marker.horizontalCenter
+                            anchors.verticalCenter: marker.verticalCenter
                             source: "icons/win11/scalable/place-marker.svg"
 
                             ToolTip.visible: mouseArea.containsMouse
@@ -181,6 +192,8 @@ Item
                             text: name
                             font.bold: true
                             anchors.leftMargin: name.width * 0.5
+                            anchors.horizontalCenter: marker.horizontalCenter
+                            anchors.top: marker.bottom
                         }
                     }
                 }
