@@ -200,7 +200,7 @@ Item {
                     Layout.alignment: Qt.AlignTop
                     Layout.leftMargin: 12
                     Layout.fillWidth: true
-                    text:"<h3>MACs Per Second Average: </h3>" + locationModel.mpsAverage
+                    text:"<h3>MACs Per Minute Average: </h3>" + (locationModel.mpsAverage * 60)
                     color: "#ffffff"
                 }
 
