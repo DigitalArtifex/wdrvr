@@ -28,7 +28,8 @@ private:
     QString m_themeName = "";
 
     const QStringList m_availableThemes {
-        "win11"
+        "win11",
+        "glyph"
     };
 
     Q_PROPERTY(QString themeName READ themeName WRITE setThemeName NOTIFY themeNameChanged FINAL)
