@@ -21,5 +21,20 @@
         <file>icons/win11/scalable/disk-partition.svg</file>
         <file>icons/win11/scalable/applications/wdrvr.svg</file>
         <file>icons/win11/index.theme</file>
+        <file>icons/glyph/scalable/bluetooth.svg</file>
+        <file>icons/glyph/scalable/cellular-network.svg</file>
+        <file>icons/glyph/scalable/menu.svg</file>
+        <file>icons/glyph/scalable/place-marker.svg</file>
+        <file>icons/glyph/scalable/settings.svg</file>
+        <file>icons/glyph/scalable/wifi.svg</file>
+        <file>icons/glyph/scalable/delete-document.svg</file>
+        <file>icons/glyph/scalable/check.svg</file>
+        <file>icons/glyph/scalable/cancel.svg</file>
+        <file>icons/glyph/scalable/open.svg</file>
+        <file>icons/glyph/scalable/create.svg</file>
+        <file>icons/glyph/scalable/chart.svg</file>
+        <file>icons/glyph/scalable/graph.svg</file>
+        <file>icons/glyph/scalable/applications/wdrvr.svg</file>
+        <file>icons/glyph/index.theme</file>
     </qresource>
 </RCC>
