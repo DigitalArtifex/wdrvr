@@ -196,6 +196,23 @@ void LocationModel::parseCSV(QString fileName)
             QStringList capabilities = capabilitiesString.split(' ', Qt::SkipEmptyParts);
             LocationData data;
 
+            bool okay = false;
+            quint64 ms = segments[3].toLongLong(&okay);
+
+            if(okay)
+                data.timestamp = QDateTime::fromMSecsSinceEpoch(ms);
+
+            if(!okay || !data.timestamp.isValid()) //fallback attempt
+                data.timestamp = QDateTime::fromString(segments[3],QString("yyyy-MM-ddThh:mm:ss.zzzt"));
+
+            if(!data.timestamp.isValid()) //well crap
+            {
+                errorOccurred("Document Parsing Error", "Document uses an invalid timestamp format. Aborting.");
+                file.close();
+
+                return;
+            }
+
             //[BSSID],[SSID],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
             if(wifiTypeKeys.contains(type))
             {
@@ -217,6 +234,7 @@ void LocationModel::parseCSV(QString fileName)
                     capabilities,
                     segments[11].split(' ', Qt::SkipEmptyParts)
                 };
+
                 ++m_wifiPointsOfInterestTemp;
             }
 
@@ -463,10 +481,24 @@ void LocationModel::parseKML(QString fileName)
                                 }
                                 else if(key == "frequency")
                                     data.frequency = value.toDouble();
-                                else if(key == "time")//"2025-05-29T08:45:33.000-07:00"
+                                else if(key == "time")//"2025-05-29T08:45:33.000-07:00" OR MS Since Epoch
                                 {
-                                    data.timestamp = QDateTime::fromString(value,QString("yyyy-MM-ddThh:mm:ss.zzzt"));
-                                    data.timestamp;
+                                    bool okay = false;
+                                    quint64 ms = value.toLongLong(&okay);
+
+                                    if(okay)
+                                        data.timestamp = QDateTime::fromMSecsSinceEpoch(ms);
+
+                                    if(!okay || !data.timestamp.isValid()) //fallback attempt
+                                        data.timestamp = QDateTime::fromString(value,QString("yyyy-MM-ddThh:mm:ss.zzzt"));
+
+                                    if(!data.timestamp.isValid()) //well crap
+                                    {
+                                        errorOccurred("Document Parsing Error", "Document uses an invalid timestamp format. Aborting.");
+                                        file.close();
+
+                                        return;
+                                    }
                                 }
                                 else if(key == "signal")
                                     data.signal = value.toDouble();
