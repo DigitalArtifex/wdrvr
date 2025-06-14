@@ -1,0 +1,19 @@
+[Icon Theme]
+Name=glyph
+Inherits=default
+Comment=SVGRepo Icons (Multicolor)
+Directories=scalable,scalable/mimetypes,scalable/applications
+
+[scalable]
+Size=48
+Type=Scalable
+MinSize=1
+MaxSize=256
+
+[scalable/applications]
+Size=48
+Type=Scalable
+MinSize=1
+MaxSize=256
+
+
