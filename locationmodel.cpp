@@ -223,6 +223,9 @@ void LocationModel::parseCSV(QString fileName)
                 data.timestamp = QDateTime::fromMSecsSinceEpoch(ms);
 
             if(!okay || !data.timestamp.isValid()) //fallback attempt
+                data.timestamp = QDateTime::fromString(segments[3],QString("yyyy-MM-ddThh:mm:sstt"));
+
+            if(!data.timestamp.isValid()) //fallback attempt 2
                 data.timestamp = QDateTime::fromString(segments[3],QString("yyyy-MM-ddThh:mm:ss.zzzt"));
 
             if(!data.timestamp.isValid()) //well crap
@@ -503,6 +506,7 @@ void LocationModel::parseKML(QString fileName)
                                     data.frequency = value.toDouble();
                                 else if(key == "time")//"2025-05-29T08:45:33.000-07:00" OR MS Since Epoch
                                 {
+
                                     bool okay = false;
                                     quint64 ms = value.toLongLong(&okay);
 
@@ -510,6 +514,9 @@ void LocationModel::parseKML(QString fileName)
                                         data.timestamp = QDateTime::fromMSecsSinceEpoch(ms);
 
                                     if(!okay || !data.timestamp.isValid()) //fallback attempt
+                                        data.timestamp = QDateTime::fromString(value,QString("yyyy-MM-ddThh:mm:sstt"));
+
+                                    if(!data.timestamp.isValid()) //fallback attempt 2
                                         data.timestamp = QDateTime::fromString(value,QString("yyyy-MM-ddThh:mm:ss.zzzt"));
 
                                     if(!data.timestamp.isValid()) //well crap
