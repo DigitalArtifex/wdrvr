@@ -673,9 +673,12 @@ void LocationModel::setProgress(qreal progress)
 void LocationModel::append(const LocationData &data)
 {
     if(m_ids.contains(data.id))
+    {
+        m_ids[data.id] = m_ids[data.id] + 1;
         return;
+    }
 
-    m_ids.append(data.id);
+    m_ids.insert(data.id, 1);
 
     int latitudeIndex = std::floor(data.coordinates.latitude() + 90);
     int longitudeIndex = std::floor(data.coordinates.longitude() + 180);
