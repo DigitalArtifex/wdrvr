@@ -271,7 +271,7 @@ private:
         "NR"
     };
 
-    QVector<QString> m_ids;
+    QHash<QString, int> m_ids;
 
     void calculateMPS();
 
