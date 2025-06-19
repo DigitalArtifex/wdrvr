@@ -15,7 +15,7 @@ wdrvr was built using Qt6 and can be compiled by opening the project in QtCreato
 git clone git@github.com:DigitalArtifex/wdrvr.git
 mkdir wdrvr/build
 cd wdrvr/build
-/opt/Qt/6.8.1/gcc_64/bin/qt-cmake -S ../../ -B ./
+~/Qt/6.9.1/gcc_64/bin/qt-cmake -S ../ -B ./
 cmake --build ./
 ```
 
