@@ -1,11 +1,11 @@
 # wdrvr
 wdrvr is a lightweight, open-source tool designed to visualize war-driving data using POIs exported from [WiGLE.net](https://wigle.net/). This first beta release introduces a focused utility for hobbyists and security researchers who want a clean, local way to view their collected data.
 
-[wdrvr](https://github.com/DigitalArtifex/wdrvr/blob/main/images/wdrvr.png)
+![wdrvr](https://github.com/DigitalArtifex/wdrvr/blob/main/images/wdrvr.png)
 
 # Usage
 
-For usage details, please see the wiki
+Obtaining the latest release is typically done by visiting the [releases](https://github.com/DigitalArtifex/wdrvr/releases) page where we offer pre-built binaries for Windows 7+ and Linux (glibc 2.35+). Alternatively, if you already have an up-to-date version of Qt installed or would just like to use a nightly build, follow the instructions for building below.
 
 # Building
 
