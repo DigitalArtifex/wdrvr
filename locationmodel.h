@@ -20,6 +20,10 @@
 #include <QtConcurrent/QtConcurrentRun>
 #include <QRegularExpression>
 #include <QVariantHash>
+#include <QSqlDatabase>
+#include <QSqlDriver>
+#include <QSqlQuery>
+#include <QSqlError>
 
 /*
  * Location data memory mapping
@@ -131,7 +135,7 @@ public:
     qreal progress() const;
     void setProgress(qreal progress);
 
-    void append(const LocationData &data);
+    void append(const LocationData &data, bool save = true);
     void sort();
     Q_INVOKABLE void save();
     Q_INVOKABLE void load(QString database);
@@ -198,6 +202,8 @@ public:
 
     qreal mpsAverage() const;
     void setMpsAverage(qreal mpsAverage);
+
+    QDir getDatabaseDirectory(QString name = "");
 
 public slots:
     Q_INVOKABLE void getPointsInRect(QGeoShape area, qreal zoomLevel);
@@ -272,6 +278,8 @@ private:
     };
 
     QHash<QString, int> m_ids;
+    QSqlDriver *m_sqlDriver = nullptr;
+    QSqlDatabase m_sqlDatabase;
 
     void calculateMPS();
 
@@ -296,9 +304,13 @@ private:
     void endLoading();
     void startUpdateTimer();
     void stopUpdateTimer();
+    void addToDataBase(const LocationData &data);
     QTimer *createUpdateTimer();
 
-    QMutex m_threadMutex;
+    //Mutexes
+    QMutex m_threadMutex; //original generic mutex. will be replaced with specific mutexes
+    QMutex m_databaseMutex; //database specific mutex
+
     QVector<LocationData> m_filteredData;
     qreal m_progress = 0;
     QString m_loadingTitle = "Loading";

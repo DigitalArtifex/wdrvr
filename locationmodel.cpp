@@ -21,13 +21,15 @@ LocationModel::LocationModel(QObject *parent)
 
     connect(m_updateTimer, &QTimer::timeout, this, &LocationModel::updateProgress);
 
+    m_sqlDatabase = QSqlDatabase::addDatabase("QSQLITE");
+
     QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
-    QStringList databases = databaseDirectory.entryList(QDir::Dirs | QDir::NoSymLinks | QDir::NoDotAndDotDot, QDir::Name);
+    QStringList databases = databaseDirectory.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
 
     if(!databases.contains("default"))
     {
         createDatabase("default");
-        databases.append("default");
+        databases.insert(0, "default");
     }
 
     setAvailableDatabases(databases);
@@ -38,21 +40,7 @@ LocationModel::~LocationModel()
     if(m_updateTimer)
         delete m_updateTimer;
 
-    for(int i = 0; i < 360; ++i)
-    {
-        for(int p = 0; p < 180; ++p)
-        {
-            LocationDataNode *node = m_sectors[i][p].head;
-
-            while(node)
-            {
-                LocationDataNode *temp = node;
-                node = node->next;
-
-                delete temp;
-            }
-        }
-    }
+    resetSectorData();
 }
 
 int LocationModel::rowCount(const QModelIndex &parent) const
@@ -206,29 +194,27 @@ void LocationModel::parseCSV(QString fileName)
             if(segments.count() != 14)
                 continue;
 
-            QString type = segments[13];
-
             QString capabilitiesString = segments[2];
             capabilitiesString.replace("][", " ");
             capabilitiesString.remove("[");
             capabilitiesString.remove("]");
 
             QStringList capabilities = capabilitiesString.split(' ', Qt::SkipEmptyParts);
-            LocationData data;
+            QDateTime timestamp;
 
             bool okay = false;
             quint64 ms = segments[3].toLongLong(&okay);
 
             if(okay)
-                data.timestamp = QDateTime::fromMSecsSinceEpoch(ms);
+                timestamp = QDateTime::fromMSecsSinceEpoch(ms);
 
-            if(!okay || !data.timestamp.isValid()) //fallback attempt
-                data.timestamp = QDateTime::fromString(segments[3],QString("yyyy-MM-ddThh:mm:sstt"));
+            if(!timestamp.isValid()) //fallback attempt
+                timestamp = QDateTime::fromString(segments[3],QString("yyyy-MM-ddThh:mm:sstt"));
 
-            if(!data.timestamp.isValid()) //fallback attempt 2
-                data.timestamp = QDateTime::fromString(segments[3],QString("yyyy-MM-ddThh:mm:ss.zzzt"));
+            if(!timestamp.isValid()) //fallback attempt 2
+                timestamp = QDateTime::fromString(segments[3],QString("yyyy-MM-ddThh:mm:ss.zzzt"));
 
-            if(!data.timestamp.isValid()) //well crap
+            if(!timestamp.isValid()) //well crap
             {
                 errorOccurred("Document Parsing Error", "Document uses an invalid timestamp format. Aborting.");
                 file.close();
@@ -236,96 +222,24 @@ void LocationModel::parseCSV(QString fileName)
                 return;
             }
 
-            //[BSSID],[SSID],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
-            if(wifiTypeKeys.contains(type))
-            {
-                data = {
-                    segments[10].toDouble(),
-                    1,
-                    QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
-                    "",
-                    segments[2],
-                    segments[0],
-                    segments[1],
-                    segments[4].toInt(),
-                    segments[6].toDouble(),
-                    "", //don't know how wigle calculates style tags
-                    segments[13],
-                    QDateTime::fromString(segments[3]),
-                    segments[12],
-                    segments[5].toDouble(),
-                    capabilities,
-                    segments[11].split(' ', Qt::SkipEmptyParts)
-                };
-
-                ++m_wifiPointsOfInterestTemp;
-            }
-
-            //[BD_ADDR],[Device Name],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
-            else if(cellTypeKeys.contains(type))
-            {
-                data = {
-                    segments[10].toDouble(),
-                    1,
-                    QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
-                    "",
-                    segments[2],
-                    segments[0],
-                    segments[1],
-                    segments[4].toInt(),
-                    segments[6].toDouble(),
-                    "", //don't know how wigle calculates style tags
-                    segments[13],
-                    QDateTime::fromString(segments[3]),
-                    segments[12],
-                    segments[5].toDouble(),
-                    capabilities,
-                    segments[11].split(' ', Qt::SkipEmptyParts)
-                };
-                ++m_cellularPointsOfInterestTemp;
-
-                if(data.type.toLower() == "lte")
-                    ++m_lteStats;
-                else if(data.type.toLower() == "nr")
-                    ++m_nrStats;
-                else if(data.type.toLower() == "gsm")
-                    ++m_gsmStats;
-                else if(data.type.toLower() == "wcdma")
-                    ++m_wcdmaStats;
-                else if(data.type.toLower() == "cdma")
-                    ++m_cdmaStats;
-            }
-
-            //[BD_ADDR],[Device Name],[Capabilities],[First timestamp seen],[Channel],[Frequency],[RSSI],[Latitude],[Longitude],[Altitude],[Accuracy],[RCOIs],[MfgrId],[Type]
-            else if(bluetoothTypeKeys.contains(type))
-            {
-                data = {
-                    segments[10].toDouble(),
-                    1,
-                    QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
-                    "",
-                    segments[2],
-                    segments[0],
-                    segments[1],
-                    segments[4].toInt(),
-                    segments[6].toDouble(),
-                    "", //don't know how wigle calculates style tags
-                    segments[13],
-                    QDateTime::fromString(segments[3]),
-                    segments[12],
-                    segments[5].toDouble(),
-                    capabilities,
-                    segments[11].split(' ', Qt::SkipEmptyParts)
-                };
-
-                ++m_bluetoothPointsOfInterestTemp;
-
-                if(data.type.toLower() == "bt")
-                    ++m_bluetoothStats;
-                else if(data.type.toLower() == "ble")
-                    ++m_bluetoothLEStats;
-
-            }
+            LocationData data {
+                segments[10].toDouble(),
+                1,
+                QGeoCoordinate(segments[7].toDouble(), segments[8].toDouble(), segments[9].toDouble()),
+                "",
+                segments[2],
+                segments[0],
+                segments[1],
+                segments[4].toInt(),
+                segments[6].toDouble(),
+                "", //don't know how wigle calculates style tags
+                segments[13],
+                timestamp,
+                segments[12],
+                segments[5].toDouble(),
+                capabilities,
+                segments[11].split(' ', Qt::SkipEmptyParts)
+            };
 
             if(first == QDateTime::fromMSecsSinceEpoch(0) || data.timestamp < first)
                 first = data.timestamp;
@@ -366,7 +280,6 @@ void LocationModel::parseCSV(QString fileName)
         setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
         setCellularPointsOfInterest(m_cellularPointsOfInterestTemp);
         endLoading();
-        save();
     });
 }
 
@@ -457,41 +370,7 @@ void LocationModel::parseKML(QString fileName)
                                 QString value = descriptorParts.join(':');
 
                                 if(key == "type")
-                                {
                                     data.type = value;
-
-                                    if(bluetoothTypeKeys.contains(data.type))
-                                    {
-                                        if(data.type.toLower() == "bt")
-                                            ++m_bluetoothStats;
-                                        else if(data.type.toLower() == "ble")
-                                            ++m_bluetoothLEStats;
-
-                                        ++m_bluetoothPointsOfInterestTemp;
-                                    }
-
-                                    else if(cellTypeKeys.contains(data.type))
-                                    {
-                                        if(data.type.toLower() == "lte")
-                                            ++m_lteStats;
-                                        else if(data.type.toLower() == "nr")
-                                            ++m_nrStats;
-                                        else if(data.type.toLower() == "gsm")
-                                            ++m_gsmStats;
-                                        else if(data.type.toLower() == "wcdma")
-                                            ++m_wcdmaStats;
-                                        else if(data.type.toLower() == "cdma")
-                                            ++m_cdmaStats;
-
-                                        ++m_cellularPointsOfInterestTemp;
-                                    }
-
-                                    else if(wifiTypeKeys.contains(data.type) || data.type.isEmpty())
-                                    {
-                                        ++m_wifiStats;
-                                        ++m_wifiPointsOfInterestTemp;
-                                    }
-                                }
                                 else if(key == "encryption")
                                     data.encryption = value;
                                 else if(key == "capabilities")
@@ -630,7 +509,6 @@ void LocationModel::parseKML(QString fileName)
         setWifiPointsOfInterest(m_wifiPointsOfInterestTemp);
         setCellularPointsOfInterest(m_cellularPointsOfInterestTemp);
         endLoading();
-        save();
     });
 }
 
@@ -670,7 +548,7 @@ void LocationModel::setProgress(qreal progress)
     m_progress = progress;
 }
 
-void LocationModel::append(const LocationData &data)
+void LocationModel::append(const LocationData &data, bool save)
 {
     if(m_ids.contains(data.id))
     {
@@ -703,6 +581,46 @@ void LocationModel::append(const LocationData &data)
 
     m_sectors[longitudeIndex][latitudeIndex].updated = true;
     m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
+
+    if(save)
+    {
+        m_databaseMutex.lock();
+        addToDataBase(data);
+        m_databaseMutex.unlock();
+    }
+
+    //set type stats
+    if(bluetoothTypeKeys.contains(data.type))
+    {
+        if(data.type.toLower() == "bt")
+            ++m_bluetoothStats;
+        else if(data.type.toLower() == "ble")
+            ++m_bluetoothLEStats;
+
+        ++m_bluetoothPointsOfInterestTemp;
+    }
+
+    else if(cellTypeKeys.contains(data.type))
+    {
+        if(data.type.toLower() == "lte")
+            ++m_lteStats;
+        else if(data.type.toLower() == "nr")
+            ++m_nrStats;
+        else if(data.type.toLower() == "gsm")
+            ++m_gsmStats;
+        else if(data.type.toLower() == "wcdma")
+            ++m_wcdmaStats;
+        else if(data.type.toLower() == "cdma")
+            ++m_cdmaStats;
+
+        ++m_cellularPointsOfInterestTemp;
+    }
+
+    else if(wifiTypeKeys.contains(data.type) || data.type.isEmpty())
+    {
+        ++m_wifiStats;
+        ++m_wifiPointsOfInterestTemp;
+    }
 }
 
 void LocationModel::sort()
@@ -760,8 +678,9 @@ void LocationModel::save()
 
     watcher.disconnect();
     watcher.setFuture(QtConcurrent::run([this](){
-        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + m_loadedDatabase);
 
+        m_databaseMutex.lock();
+        QDir databaseDirectory = getDatabaseDirectory();
         QFile mpsFile(databaseDirectory.absolutePath() + QDir::separator() + "mps.dat");
 
         if(mpsFile.open(QFile::ReadWrite))
@@ -772,60 +691,67 @@ void LocationModel::save()
 
         mpsFile.close();
 
-        quint64 totalOps = 360 * 180;
+        if(!m_sqlDatabase.isOpen() && !m_sqlDatabase.open())
+        {
+            qDebug() << "Could not open database" << m_database;
+            qDebug() << m_sqlDatabase.lastError();
+
+            m_databaseMutex.unlock();
+            return;
+        }
+
+        quint64 totalOps = 0;
+        quint64 currentOp = 0;
+
+        //get total ops
         for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
         {
             for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
             {
-                if(!m_sectors[longitudeIndex][latitudeIndex].updated || !m_sectors[longitudeIndex][latitudeIndex].head)
-                    continue;
+                if(m_sectors[longitudeIndex][latitudeIndex].updated)
+                    totalOps += m_sectors[longitudeIndex][latitudeIndex].locations;
+            }
+        }
 
-                if(!m_sectors[longitudeIndex][latitudeIndex].mutex.tryLock(1250))
-                    return;
+        QSqlQuery query(m_sqlDatabase);
 
-                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString::number(longitudeIndex) + QDir::separator() + QString::number(latitudeIndex) + QDir::separator() + "0.csv");
-
-                if(!file.open(QFile::ReadWrite))
-                {
-                    errorOccurred("Save Database Error", file.errorString());
-                    return;
-                }
-
+        for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
+        {
+            for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
+            {
                 LocationDataNode *node = m_sectors[longitudeIndex][latitudeIndex].head;
 
                 while(node)
                 {
-                    LocationData data = node->data;
-                    QString fileData;
+                    LocationData &data = node->data;
 
-                    QString capabilities;
+                    QString sanitizedDescription = QUrl::toPercentEncoding(data.description);
+                    sanitizedDescription.replace('%', "\%");
 
-                    for(const QString &capability : std::as_const(data.capabilities))
-                        capabilities += "[" + capability + "]";
+                    QString command = QString("INSERT OR REPLACE INTO pois(id, accuracy, longitude, latitude, description, encryption, name, open, signal, style, type, timestamp, mfgid, frequency, capabilities, rois) VALUES(\"%1\",").arg(data.id);
+                    command += QString(" \"%1\", \"%2\", \"%3\"").arg(QString::number(data.accuracy), QString::number(data.coordinates.longitude()), QString::number(data.coordinates.latitude()));
+                    command += QString(", \"%1\", \"%2\", \"%3\"").arg(sanitizedDescription, data.encryption, QUrl::toPercentEncoding(data.name));
+                    command += QString(", \"%1\", \"%2\", \"%3\"").arg(QString::number(data.open), QString::number(data.signal), data.styleTag);
+                    command += QString(", \"%1\", \"%2\", \"%3\"").arg(data.type, data.timestamp.toString(), data.mfgid);
+                    command += QString(", \"%1\", \"%2\", \"%3\")").arg(QString::number(data.frequency), data.capabilities.join(':'), data.rois.join(':'));
 
-                    QString rois;
-
-                    for(const QString &roi : std::as_const(data.rois))
-                        rois += "[" + roi + "]";
-
-                    fileData =  data.id + "," + QString::number(data.coordinates.longitude()) + "," + QString::number(data.coordinates.latitude()) + ",";
-                    fileData += data.encryption + "," + data.description + "," + data.name + "," + data.type + ",";
-                    fileData += QString::number(data.accuracy) + "," + QString::number(data.signal) + ",";
-                    fileData += QString::number(data.open) + "," + QString::number(data.timestamp.toMSecsSinceEpoch()) + "," + data.styleTag + ",";
-                    fileData += capabilities + "," + rois + "," + data.mfgid + "," + QString::number(data.frequency);
+                    if(!query.exec(command))
+                    {
+                        qDebug() << "Failed to save database" << m_database;
+                        qDebug() << query.lastError();
+                        qDebug() << command;
+                        m_databaseMutex.unlock();
+                        return;
+                    }
 
                     node = node->next;
 
-                    file.write(QUrl::toPercentEncoding(fileData) + "\n");
+                    setProgress(static_cast<qreal>(++currentOp) / totalOps);
                 }
-
-                file.close();
-
-                setProgress((longitudeIndex + latitudeIndex) / totalOps);
-
-                m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
             }
         }
+
+        m_databaseMutex.unlock();
     }));
 
     watcher.connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
@@ -838,6 +764,7 @@ void LocationModel::load(QString database)
     startLoading("Loading");
 
     resetSectorData();
+    resetDataModel();
 
     m_bluetoothPointsOfInterestTemp = 0;
     m_wifiPointsOfInterestTemp = 0;
@@ -855,152 +782,91 @@ void LocationModel::load(QString database)
 
     watcher.disconnect();
     watcher.setFuture(QtConcurrent::run([this, database](){
-        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + database);
 
-        QFile mpsFile(databaseDirectory.absolutePath() + QDir::separator() + "mps.dat");
+        if(!m_databaseMutex.tryLock(500))
+            return;
 
-        if(mpsFile.open(QFile::ReadOnly))
+        QDir databaseDirectory = getDatabaseDirectory(database);
+
+        if(m_sqlDatabase.isOpen())
         {
-            while(!mpsFile.atEnd())
-            {
-                QString line = mpsFile.readLine();
-                bool converted = false;
-
-                qreal value = line.toDouble(&converted);
-
-                if(converted)
-                    m_mps.append(value);
-            }
+            m_sqlDatabase.close();
+            QSqlDatabase::removeDatabase(m_sqlDatabase.connectionName());
         }
 
-        mpsFile.close();
+        m_sqlDatabase = QSqlDatabase::addDatabase("QSQLITE");
+        m_sqlDatabase.setDatabaseName(databaseDirectory.absoluteFilePath(database + ".db"));
 
-        calculateMPS();
-
-        quint128 totalOps = 0;
-
-        for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
+        if(!m_sqlDatabase.open())
         {
-            for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
-            {
-                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString::number(longitudeIndex) + QDir::separator() + QString::number(latitudeIndex) + QDir::separator() + "0.csv");
-                totalOps += file.size();
-            }
+            qDebug() << "Could not open database" << database << m_sqlDatabase.lastError();
+            m_databaseMutex.unlock();
+            return;
         }
 
-        quint128 completedOps = 0;
+        //get DB size
+        QSqlQuery query(m_sqlDatabase);
+        query.prepare(QString("SELECT COUNT(*) FROM pois"));
+        query.exec();
 
-        for(int longitudeIndex = 0; longitudeIndex < 360; ++longitudeIndex)
+        if (query.next()) {
+            m_totalPointsOfInterestTemp = query.value(0).toInt();
+        }
+
+        setProgress(0);
+
+        quint64 loadedDataCount = 0;
+        quint64 loops = (m_totalPointsOfInterestTemp / 1000);
+
+        if(m_totalPointsOfInterestTemp % 1000)
+            ++loops;
+
+        //read in chunks of 1000 entries
+        for(quint64 i = 0; i < loops; ++i)
         {
-            for(int latitudeIndex = 0; latitudeIndex < 180; ++latitudeIndex)
+            quint64 sqlStartIndex = (i * 1000);
+
+            QString command = QString("SELECT * FROM pois LIMIT 1000 OFFSET %1").arg(QString::number(sqlStartIndex));
+
+            query.prepare(command);
+
+            if(!query.exec())
             {
-                //m_sectors[longitudeIndex][latitudeIndex].mutex.lock();
+                qDebug() << "Could not load database" << database << m_sqlDatabase.lastError();
+                m_databaseMutex.unlock();
+                return;
+            }
 
-                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString::number(longitudeIndex) + QDir::separator() + QString::number(latitudeIndex) + QDir::separator() + "0.csv");
-
-                if(!file.open(QFile::ReadWrite))
+            while(query.next())
+            {
+                LocationData data
                 {
-                    errorOccurred("Load Database Error", file.fileName() + "\n" + file.errorString());
-                    return;
-                }
+                    query.value("accuracy").toDouble(),
+                    1,
+                    QGeoCoordinate(query.value("latitude").toDouble(), query.value("longitude").toDouble()),
+                    QUrl::fromPercentEncoding(query.value("description").toByteArray()),
+                    query.value("encryption").toString(),
+                    query.value("id").toString(),
+                    QUrl::fromPercentEncoding(query.value("name").toByteArray()),
+                    query.value("open").toString().toInt(),
+                    query.value("signal").toDouble(),
+                    query.value("style").toString(),
+                    query.value("type").toString(),
+                    query.value("timestamp").toDateTime(),
+                    query.value("mfgid").toString(),
+                    query.value("frequency").toDouble(),
+                    query.value("capabilities").toString().split(':'),
+                    query.value("rois").toString().split(':')
+                };
 
-                LocationDataNode *node = m_sectors[longitudeIndex][latitudeIndex].head;
-                while(!file.atEnd())
-                {
-                    QString line = QUrl::fromPercentEncoding(file.readLine());
-                    QStringList segments = line.split(',');
+                append(data, false);
 
-                    QString capabilitiesString = segments[12];
-                    capabilitiesString.remove("[");
-                    capabilitiesString.remove("]");
-
-                    QString roiString = segments[13];
-                    roiString.remove("[");
-                    roiString.remove("]");
-
-                    //fileData += capabilities + "," + rois + "," + data.mfgid + "," + QString::number(data.frequency);
-                    LocationData data {
-                        segments[7].toDouble(), //accuracy
-                        1, //cluster count
-                        QGeoCoordinate(segments[2].toDouble(), segments[1].toDouble()),
-                        segments[4],
-                        segments[3],
-                        segments[0],
-                        segments[5],
-                        segments[9].toInt(),
-                        segments[8].toDouble(),
-                        segments[11],
-                        segments[6],
-                        QDateTime::fromMSecsSinceEpoch(segments[10].toLongLong()),
-                        segments[14],
-                        segments[15].toDouble(),
-                        capabilitiesString.split("][", Qt::SkipEmptyParts),
-                        roiString.split("][", Qt::SkipEmptyParts)
-                    };
-
-                    if(wifiTypeKeys.contains(data.type) || data.type.isEmpty())
-                    {
-                        ++m_wifiPointsOfInterestTemp;
-                        ++m_wifiStats;
-                    }
-                    else if(bluetoothTypeKeys.contains(data.type))
-                    {
-                        if(data.type.toLower() == "bt")
-                            ++m_bluetoothStats;
-                        else if(data.type.toLower() == "ble")
-                            ++m_bluetoothLEStats;
-
-                        ++m_bluetoothPointsOfInterestTemp;
-                    }
-                    else if(cellTypeKeys.contains(data.type))
-                    {
-                        if(data.type.toLower() == "lte")
-                            ++m_lteStats;
-                        else if(data.type.toLower() == "nr")
-                            ++m_nrStats;
-                        else if(data.type.toLower() == "gsm")
-                            ++m_gsmStats;
-                        else if(data.type.toLower() == "wcdma")
-                            ++m_wcdmaStats;
-                        else if(data.type.toLower() == "cdma")
-                            ++m_cdmaStats;
-
-                        ++m_cellularPointsOfInterestTemp;
-                    }
-                    else
-                        qDebug() << "Uknown Type Key" << data.type;
-
-                    ++m_totalPointsOfInterestTemp;
-
-                    if(m_ids.contains(data.id))
-                        continue;
-
-                    append(data);
-
-                    // if(!node)
-                    // {
-                    //     m_sectors[longitudeIndex][latitudeIndex].head = new LocationDataNode(data);
-                    //     node = m_sectors[longitudeIndex][latitudeIndex].head;
-                    // }
-
-                    // else
-                    // {
-                    //     node->next = new LocationDataNode(data);
-                    //     node = node->next;
-                    // }
-
-                    completedOps += file.pos();
-                }
-
-                file.close();
-
-                if(totalOps > 0)
-                    setProgress(completedOps / totalOps);
-
-                //m_sectors[longitudeIndex][latitudeIndex].mutex.unlock();
-                setLoadedDatabase(database);
+                setProgress(++loadedDataCount / m_totalPointsOfInterestTemp);
             }
         }
+
+        setLoadedDatabase(database);
+        m_databaseMutex.unlock();
     }));
 
     watcher.connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
@@ -1256,6 +1122,19 @@ void LocationModel::setMpsAverage(qreal mpsAverage)
     emit mpsAverageChanged();
 }
 
+QDir LocationModel::getDatabaseDirectory(QString name)
+{
+    if(name.isEmpty())
+        name = m_loadedDatabase;
+
+    QDir directory = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + name);
+
+    if(!directory.exists())
+        directory.mkpath(directory.absolutePath());
+
+    return directory;
+}
+
 QString LocationModel::currentPage() const
 {
     return m_currentPage;
@@ -1376,111 +1255,16 @@ void LocationModel::resetDatabase()
 {
     startLoading("Resetting Database");
     auto result = QtConcurrent::run([this](){
-        if(!m_threadMutex.tryLock(1250))
-            return;
+        m_databaseMutex.lock();
 
         //clear filtered data
-        if(m_filteredData.count())
-            resetDataModel();
+        resetDataModel();
+        resetSectorData();
 
-        //determine how much we have to do for progress
-        quint64 fileOps = 0;
-        quint64 memOps = 0;
+        QFile::remove(getDatabaseDirectory().absoluteFilePath(m_loadedDatabase + ".db"));
+        getDatabaseDirectory().rmdir(getDatabaseDirectory().absolutePath());
 
-        for(int latitude = 0; latitude < 180; ++latitude)
-        {
-            for(int longitude = 0; longitude < 360; ++longitude)
-            {
-                LocationDataNode *node = m_sectors[longitude][latitude].head;
-
-                //only alter files with data in them for default database
-                if(node && m_loadedDatabase == "default")
-                {
-                    ++fileOps;
-
-                    memOps += m_sectors[longitude][latitude].locations;
-                }
-                else if(m_loadedDatabase != "default")
-                {
-                    ++fileOps;
-
-                    memOps += m_sectors[longitude][latitude].locations;
-                }
-            }
-        }
-
-        quint64 totalOps = fileOps + memOps;
-        quint64 completedFileOps = 0;
-        quint64 completedMemOps = 0;
-        setProgress(0);
-
-        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + m_loadedDatabase);
-
-        //clear sectored data
-        for(int longitude = 0; longitude < 360; ++longitude)
-        {
-            QDir longitudeDirectory = databaseDirectory;
-            longitudeDirectory.cd(QString::number(longitude));
-
-            for(int latitude = 0; latitude < 180; ++latitude)
-            {
-                QDir latitudeDirectory = longitudeDirectory;
-                latitudeDirectory.cd(QString::number(latitude));
-
-                LocationDataNode *node = m_sectors[longitude][latitude].head;
-
-                //make sure only files with data are altered for the default database
-                if(node && m_loadedDatabase == "default")
-                {
-                    QFile file(latitudeDirectory.absolutePath() + QDir::separator() + QString("0.csv"));
-
-                    if(file.exists())
-                        file.remove();
-
-                    if(file.open(QFile::ReadWrite))
-                    {
-                        file.write("");
-                        file.flush();
-                        file.close();
-                    }
-                }
-
-                else if(m_loadedDatabase != "default")
-                {
-                    QFile file(latitudeDirectory.absolutePath() + QDir::separator() + QString("0.csv"));
-
-                    if(file.exists())
-                        file.remove();
-                }
-
-                //remove the directory if its not the default database
-                if(m_loadedDatabase != "default" && latitudeDirectory.exists())
-                    latitudeDirectory.rmdir(latitudeDirectory.absolutePath());
-
-                //progress = 50% file ops 50% mem ops = (completeFops / fops) * 0.5 + (completedMops / mops) * 0.5
-                setProgress(((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5));
-
-                while(node)
-                {
-                    LocationDataNode *currentNode = node;
-                    node = node->next;
-
-                    delete currentNode;
-
-                    setProgress(((completedFileOps / fileOps) * 0.5) + ((completedMemOps / memOps) * 0.5));
-                }
-
-                m_sectors[longitude][latitude].last = nullptr;
-                m_sectors[longitude][latitude].updated = false;
-                m_sectors[longitude][latitude].locations = 0;
-            }
-
-            //remove the directory if its not the default database
-            if(m_loadedDatabase != "default" && longitudeDirectory.exists())
-                longitudeDirectory.rmdir(longitudeDirectory.absolutePath());
-        }
-
-        m_threadMutex.unlock();
+        m_databaseMutex.unlock();
 
     });
 
@@ -1489,6 +1273,11 @@ void LocationModel::resetDatabase()
 
     connect(&watcher, &QFutureWatcher<void>::finished, this, [this](){
         endLoading();
+
+        if(m_loadedDatabase == "default")
+            createDatabase("default");
+        else
+            load("default");
     });
 }
 
@@ -1497,46 +1286,38 @@ void LocationModel::createDatabase(QString name)
     startLoading("Creating Database");
 
     auto result = QtConcurrent::run([this, name](){
-        QDir databaseDirectory(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator() + name);
+        QDir databaseDirectory = getDatabaseDirectory(name);
 
-        if(databaseDirectory.exists())
+        if(QFile::exists(databaseDirectory.absoluteFilePath(name + ".db")))
         {
             errorOccurred("Create Database Error", "Database already exists");
             return;
         }
 
-        //create the root directory
-        databaseDirectory.mkpath(databaseDirectory.absolutePath());
+        QSqlDatabase database = QSqlDatabase::addDatabase("QSQLITE");
+        database.setDatabaseName(databaseDirectory.absoluteFilePath(name + ".db"));
 
-        //create sector directories
-        for(quint64 longitude = 0; longitude < 360; ++longitude)
+        if(!database.open())
         {
-            for(quint64 latitude = 0; latitude < 180; ++latitude)
-            {
-                if(!databaseDirectory.mkpath(QString("%1%2%3").arg(QString::number(longitude), QDir::separator(), QString::number(latitude))))
-                {
-                    errorOccurred("Create Database Error", "Could not create required directories");
-
-                    if(longitude || latitude)
-                        databaseDirectory.rmdir(databaseDirectory.absolutePath());
-
-                    return;
-                }
-
-                QFile file(databaseDirectory.absolutePath() + QDir::separator() + QString("%1%2%3").arg(QString::number(longitude), QDir::separator(), QString::number(latitude)) + QDir::separator() + "0.csv");
-                if(!file.open(QFile::ReadWrite))
-                {
-                    errorOccurred("Create Database Error", "Could not create required files");
-
-                    if(longitude || latitude)
-                        databaseDirectory.rmdir(databaseDirectory.absolutePath());
-                }
-
-                file.write("");
-                file.flush();
-                file.close();
-            }
+            qDebug() << "Could not open database" << database.lastError();
+            return;
         }
+
+        QString command = "CREATE TABLE IF NOT EXISTS pois (id TEXT PRIMARY KEY, name TEXT, timestamp TEXT, type TEXT";
+        command += ", mfgid TEXT, description BLOB, longitude TEXT, latitude TEXT, rois TEXT, capabilities TEXT";
+        command += ", style TEXT, encryption TEXT, open TEXT, signal TEXT, frequency TEXT, accuracy TEXT)";
+        QSqlQuery query;
+
+        query.prepare(command);
+        if(!query.exec())
+        {
+            qDebug() << "Could not open database" << database.lastError();
+            return;
+        }
+
+        database.close();
+
+        qDebug() << "Created" << name;
 
         return;
     });
@@ -1564,6 +1345,40 @@ void LocationModel::stopUpdateTimer()
 {
     if(m_updateTimer->isActive())
         m_updateTimer->stop();
+}
+
+void LocationModel::addToDataBase(const LocationData &data)
+{
+    bool close = false;
+    if(!m_sqlDatabase.isOpen() && !(close = m_sqlDatabase.open()))
+    {
+        qDebug() << "Could not open database" << m_loadedDatabase << m_sqlDatabase.lastError();
+        return;
+    }
+
+    QSqlQuery query(m_sqlDatabase);
+
+    QString sanitizedDescription = QUrl::toPercentEncoding(data.description);
+    sanitizedDescription.replace('%', "\%");
+
+    QString command = QString("INSERT OR REPLACE INTO pois(id, accuracy, longitude, latitude, description, encryption, name, open, signal, style, type, timestamp, mfgid, frequency, capabilities, rois) VALUES(\"%1\",").arg(data.id);
+    command += QString(" \"%1\", \"%2\", \"%3\"").arg(QString::number(data.accuracy), QString::number(data.coordinates.longitude()), QString::number(data.coordinates.latitude()));
+    command += QString(", \"%1\", \"%2\", \"%3\"").arg(sanitizedDescription, data.encryption, QUrl::toPercentEncoding(data.name));
+    command += QString(", \"%1\", \"%2\", \"%3\"").arg(QString::number(data.open), QString::number(data.signal), data.styleTag);
+    command += QString(", \"%1\", \"%2\", \"%3\"").arg(data.type, data.timestamp.toString(), data.mfgid);
+    command += QString(", \"%1\", \"%2\", \"%3\")").arg(QString::number(data.frequency), data.capabilities.join(':'), data.rois.join(':'));
+
+    if(!query.exec(command))
+    {
+        qDebug() << "Failed to save database" << m_database;
+        qDebug() << query.lastError();
+        qDebug() << command;
+        m_databaseMutex.unlock();
+        return;
+    }
+
+    if(close)
+        m_sqlDatabase.close();
 }
 
 QTimer *LocationModel::createUpdateTimer()
