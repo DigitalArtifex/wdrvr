@@ -286,6 +286,51 @@ Item {
                 Layout.alignment: Qt.AlignTop
                 color: "#88000000"
 
+                ShaderEffectSource
+                {
+                    id: sourceItem
+                    sourceItem: map
+                    hideSource: false
+                    live: true
+                    anchors.fill: parent
+                    sourceRect: Qt.rect(parent.x, parent.y, parent.width, parent.height)
+                    clip: true
+                }
+                MultiEffect
+                {
+                    source: sourceItem
+                    id: effect
+                    anchors.fill: settingsPanel
+                    blurEnabled: true
+                    blurMax: 64
+                    blur: .5
+                    blurMultiplier: 1
+                    colorizationColor: "#000000"
+                    colorization: 0.25
+                    autoPaddingEnabled: false
+                    clip: true
+                }
+
+                Image
+                {
+                    id: background
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
+                    opacity: 0.03
+                    clip: true
+                    source: "images/bernard-hermant-qi-H70ga93s-unsplash.jpg"
+                    MultiEffect
+                    {
+                        source: background
+                        anchors.fill: background
+                        blurEnabled: true
+                        blurMax: 64
+                        blur: 1.0
+                        colorizationColor: "#000000"
+                        colorization: 0.125
+                    }
+                }
+
                 SettingsPanel
                 {
                     id: settingsPanelContents

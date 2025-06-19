@@ -176,6 +176,8 @@ Item
                 icon.name: "delete-document"
                 icon.width: 24
                 icon.height: 24
+
+                onClicked: locationModel.resetDatabase()
             }
         }
     }

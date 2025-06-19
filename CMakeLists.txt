@@ -17,6 +17,7 @@ find_package(Qt6 COMPONENTS Location)
 find_package(Qt6 COMPONENTS Widgets)
 find_package(Qt6 COMPONENTS QuickEffects)
 find_package(Qt6 COMPONENTS Graphs)
+find_package(Qt6 COMPONENTS Sql)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -40,6 +41,7 @@ target_link_libraries(wdrvr PUBLIC
     Qt::Widgets
     Qt::QuickEffects
     Qt::Graphs
+    Qt::Sql
 )
 
 #increase windows stack size to 16mb
@@ -94,6 +96,7 @@ set(wdrvr_resource_files
     "LoadingScreen.qml"
     "images/white_textured_wallpaper_sq.jpg"
     "images/white_textured_wallpaper_small.png"
+    "images/bernard-hermant-qi-H70ga93s-unsplash.jpg"
 )
 
 qt6_add_resources(wdrvr "wdrvr"

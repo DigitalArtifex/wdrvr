@@ -2,401 +2,425 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Effects
-import Qt5Compat.GraphicalEffects
+import QtPositioning
+import QtLocation
 
 Item {
+    property QtObject shaderSource
+    z: 11
+
     anchors.fill: parent
-    ColumnLayout
+
+    Rectangle
     {
-        anchors.fill: parent
-        z: 11
+        id: legendPanel
 
-        Rectangle
+        width: 320
+        height: 100
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 12
+        anchors.bottomMargin: 12
+        radius: 12
+        border.color: "#88000000"
+        border.pixelAligned: true
+        border.width: 2
+
+        ShaderEffectSource
         {
-            id: legendPanel
+            id: sourceItem
+            sourceItem: map
+            hideSource: false
+            live: true
+            anchors.fill: parent
+            sourceRect: Qt.rect(parent.x, parent.y, parent.width, parent.height)
+            clip: true
+        }
 
-            Layout.preferredWidth: 320
-            Layout.preferredHeight: 100
-            Layout.minimumHeight: 100
-            Layout.minimumWidth: 90
-            Layout.alignment: Qt.AlignBottom | Qt.AlignRight
-            Layout.rightMargin: 6
-            Layout.topMargin: 6
-            Layout.leftMargin: 6
-            Layout.bottomMargin: 6
-            color: "#00444444"
-            radius: 12
+        // layer.enabled: true
+        // layer.effect:
+        MultiEffect
+        {
+            source: sourceItem
+            id: effect
+            anchors.fill: legendPanel
+            blurEnabled: true
+            blurMax: 16
+            blur: 1
+            blurMultiplier: 0
+            colorizationColor: "#000000"
+            colorization: 0.175
+            autoPaddingEnabled: false
+            clip: true
+        }
 
-            Image
-            {
-                id: background
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                opacity: 0
-                clip: true
-                source: "images/white_textured_wallpaper_small.png"
-            }
 
+        Image
+        {
+            id: background
+            anchors.fill: parent
+            fillMode: Image.PreserveAspectCrop
+            opacity: 0.03
+            clip: true
+            source: "images/bernard-hermant-qi-H70ga93s-unsplash.jpg"
             MultiEffect
             {
                 source: background
-                id: effect
                 anchors.fill: background
                 blurEnabled: true
-                blurMax: 32
+                blurMax: 64
                 blur: 1.0
+                colorizationColor: "#000000"
+                colorization: 0.125
             }
+        }
 
-            ColumnLayout
+        ColumnLayout
+        {
+            anchors.fill: parent
+            Rectangle
             {
-                anchors.fill: parent
-                Rectangle
+                Layout.fillHeight: false;
+                Layout.fillWidth: true;
+                color: "transparent"
+                Layout.preferredHeight: 30
+                Layout.maximumHeight: 30
+                Layout.rightMargin: 12
+                Layout.leftMargin: 12
+                Layout.topMargin: 12
+                radius: 12
+
+                RowLayout
                 {
-                    Layout.fillHeight: false;
-                    Layout.fillWidth: true;
-                    color: "transparent"
-                    Layout.preferredHeight: 30
-                    Layout.maximumHeight: 30
-                    Layout.rightMargin: 12
-                    Layout.leftMargin: 12
-                    Layout.topMargin: 12
 
-                    RowLayout
+                    anchors.fill: parent
+                    Rectangle
                     {
-
-                        anchors.fill: parent
-                        Rectangle
+                        id: poiTotalRect
+                        Layout.fillHeight: true;
+                        Layout.fillWidth: true;
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        color: "transparent"
+                        Image
                         {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                            color: "transparent"
-                            Image
-                            {
-                                id: locationImage
-                                anchors.left: parent.left
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                antialiasing: true
-                                verticalAlignment: Image.AlignVCenter
+                            id: locationImage
+                            anchors.left: parent.left
+                            width: 24
+                            height: 24
+                            smooth: true
+                            fillMode: Image.PreserveAspectFit
+                            antialiasing: true
+                            verticalAlignment: Image.AlignVCenter
 
-                                Connections {
-                                    target: Icon
+                            Connections {
+                                target: Icon
 
-                                    function onThemeNameChanged()
-                                    {
-                                        locationImage.source = Icon.fromTheme("scalable/place-marker.svg");
-                                    }
-                                }
-
-                                //satisfy pre-load conditions
-                                Component.onCompleted:
+                                function onThemeNameChanged()
                                 {
-                                    locationImage.source = Icon.fromTheme("scalable/place-marker.svg")
+                                    locationImage.source = Icon.fromTheme("scalable/place-marker.svg");
                                 }
                             }
 
-                            Text
+                            //satisfy pre-load conditions
+                            Component.onCompleted:
                             {
-                                text: "<h4>Total</h4>"
-                                anchors.left: locationImage.right
-                                color: "white"
-                                leftPadding: 12
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
+                                locationImage.source = Icon.fromTheme("scalable/place-marker.svg")
                             }
 
-                            Text
+                            layer.enabled: true
+                            layer.effect: MultiEffect
                             {
-                                anchors.right: parent.right
-                                text: locationModel.totalPointsOfInterest
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
                             }
                         }
 
-                        Rectangle
+                        Text
                         {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                            color: "transparent"
+                            text: "<h4>Total</h4>"
+                            anchors.left: locationImage.right
+                            color: "white"
+                            leftPadding: 12
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
 
-                            Image
+                            layer.enabled: true
+                            layer.effect: MultiEffect
                             {
-                                id: wifiImage
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                antialiasing: true
-                                verticalAlignment: Image.AlignVCenter
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
+                            }
+                        }
 
-                                Connections {
-                                    target: Icon
+                        Text
+                        {
+                            anchors.right: parent.right
+                            text: locationModel.totalPointsOfInterest
+                            color: "white"
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
 
-                                    function onThemeNameChanged()
-                                    {
-                                        wifiImage.source = Icon.fromTheme("scalable/wifi.svg");
-                                    }
-                                }
+                    Rectangle
+                    {
+                        Layout.fillHeight: true;
+                        Layout.fillWidth: true;
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        color: "transparent"
 
-                                //satisfy pre-load conditions
-                                Component.onCompleted:
+                        Image
+                        {
+                            id: wifiImage
+                            width: 24
+                            height: 24
+                            smooth: true
+                            fillMode: Image.PreserveAspectFit
+                            antialiasing: true
+                            verticalAlignment: Image.AlignVCenter
+
+                            Connections {
+                                target: Icon
+
+                                function onThemeNameChanged()
                                 {
-                                    wifiImage.source = Icon.fromTheme("scalable/wifi.svg")
+                                    wifiImage.source = Icon.fromTheme("scalable/wifi.svg");
                                 }
                             }
 
-                            Text
+                            //satisfy pre-load conditions
+                            Component.onCompleted:
                             {
-                                text: "<h4>WiFi</h4>"
-                                color: "white"
-                                anchors.left: wifiImage.right
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 6
+                                wifiImage.source = Icon.fromTheme("scalable/wifi.svg")
                             }
 
-                            Text
+                            layer.enabled: true
+                            layer.effect: MultiEffect
                             {
-                                anchors.right: parent.right
-                                text: locationModel.wifiPointsOfInterest
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
                             }
+                        }
+
+                        Text
+                        {
+                            text: "<h4>WiFi</h4>"
+                            color: "white"
+                            anchors.left: wifiImage.right
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
+                            leftPadding: 6
+
+                            layer.enabled: true
+                            layer.effect: MultiEffect
+                            {
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
+                            }
+                        }
+
+                        Text
+                        {
+                            anchors.right: parent.right
+                            text: locationModel.wifiPointsOfInterest
+                            color: "white"
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
                 }
-                Rectangle
+            }
+            Rectangle
+            {
+                Layout.fillHeight: false;
+                Layout.fillWidth: true;
+                color: "transparent"
+                Layout.preferredHeight: 35
+                Layout.maximumHeight: 35
+                Layout.rightMargin: 12
+                Layout.leftMargin: 12
+                Layout.topMargin: 12
+
+                RowLayout
                 {
-                    Layout.fillHeight: false;
-                    Layout.fillWidth: true;
-                    color: "transparent"
-                    Layout.preferredHeight: 35
-                    Layout.maximumHeight: 35
-                    Layout.rightMargin: 12
-                    Layout.leftMargin: 12
-                    Layout.topMargin: 12
 
-                    RowLayout
+                    anchors.fill: parent
+                    Rectangle
                     {
-
-                        anchors.fill: parent
-                        Rectangle
+                        Layout.fillHeight: true;
+                        Layout.fillWidth: true;
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                        color: "transparent"
+                        Image
                         {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                            color: "transparent"
-                            Image
-                            {
-                                id: bluetoothImage
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                antialiasing: true
-                                verticalAlignment: Image.AlignVCenter
+                            id: bluetoothImage
+                            width: 24
+                            height: 24
+                            smooth: true
+                            fillMode: Image.PreserveAspectFit
+                            antialiasing: true
+                            verticalAlignment: Image.AlignVCenter
 
-                                Connections {
-                                    target: Icon
+                            Connections {
+                                target: Icon
 
-                                    function onThemeNameChanged()
-                                    {
-                                        bluetoothImage.source = Icon.fromTheme("scalable/bluetooth.svg");
-                                    }
-                                }
-
-                                //satisfy pre-load conditions
-                                Component.onCompleted:
+                                function onThemeNameChanged()
                                 {
-                                    bluetoothImage.source = Icon.fromTheme("scalable/bluetooth.svg")
+                                    bluetoothImage.source = Icon.fromTheme("scalable/bluetooth.svg");
                                 }
                             }
 
-                            Text
+                            //satisfy pre-load conditions
+                            Component.onCompleted:
                             {
-                                text: "<h4>Bluetooth</h4>"
-                                anchors.left: bluetoothImage.right
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 6
+                                bluetoothImage.source = Icon.fromTheme("scalable/bluetooth.svg")
                             }
 
-                            Text
+                            layer.enabled: true
+                            layer.effect: MultiEffect
                             {
-                                id: bluetoothPOIValue
-                                anchors.right: parent.right
-                                text: locationModel.bluetoothPointsOfInterest
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-
-                                Connections {
-                                    target: locationModel
-
-                                    function onBluetoothPointsOfInterestChanged()
-                                    {
-                                        bluetoothPOIValue.text = locationModel.bluetoothPointsOfInterest
-                                    }
-                                }
-
-                                Component.onCompleted:
-                                {
-                                    text = locationModel.bluetoothPointsOfInterest
-                                }
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
                             }
                         }
 
-                        Rectangle
+                        Text
                         {
-                            Layout.fillHeight: true;
-                            Layout.fillWidth: true;
-                            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                            color: "transparent"
-                            Image
+                            text: "<h4>Bluetooth</h4>"
+                            anchors.left: bluetoothImage.right
+                            color: "white"
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
+                            leftPadding: 6
+
+                            layer.enabled: true
+                            layer.effect: MultiEffect
                             {
-                                id: cellularImage
-                                width: 24
-                                height: 24
-                                smooth: true
-                                fillMode: Image.PreserveAspectFit
-                                antialiasing: true
-                                verticalAlignment: Image.AlignVCenter
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
+                            }
+                        }
 
-                                Connections {
-                                    target: Icon
+                        Text
+                        {
+                            id: bluetoothPOIValue
+                            anchors.right: parent.right
+                            text: locationModel.bluetoothPointsOfInterest
+                            color: "white"
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
 
-                                    function onThemeNameChanged()
-                                    {
-                                        cellularImage.source = Icon.fromTheme("scalable/cellular-network.svg");
-                                    }
-                                }
+                            Connections {
+                                target: locationModel
 
-                                //satisfy pre-load conditions
-                                Component.onCompleted:
+                                function onBluetoothPointsOfInterestChanged()
                                 {
-                                    cellularImage.source = Icon.fromTheme("scalable/cellular-network.svg")
+                                    bluetoothPOIValue.text = locationModel.bluetoothPointsOfInterest
                                 }
                             }
 
-                            Text
+                            Component.onCompleted:
                             {
-                                text: "<h4>Cellular</h4>"
-                                anchors.left: cellularImage.right
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 6
-                            }
-
-                            Text
-                            {
-                                id: cellularPOIValue
-                                anchors.right: parent.right
-                                color: "white"
-                                height: 24
-                                verticalAlignment: Text.AlignVCenter
-                                text: locationModel.cellularPointsOfInterest
-
-                                Connections {
-                                    target: locationModel
-
-                                    function onCellularPointsOfInterestChanged()
-                                    {
-                                        cellularPOIValue.text = locationModel.cellularPointsOfInterest
-                                    }
-                                }
-
-                                Component.onCompleted:
-                                {
-                                    text = locationModel.cellularPointsOfInterest
-                                }
+                                text = locationModel.bluetoothPointsOfInterest
                             }
                         }
                     }
-                }
-                Rectangle
-                {
-                    Layout.fillHeight: true;
-                    Layout.fillWidth: true;
-                    color: "transparent"
-                    Layout.rightMargin: 6
-                    Layout.topMargin: 6
-                    Layout.leftMargin: 6
-                    Layout.bottomMargin: 6
 
-                    RowLayout
+                    Rectangle
                     {
+                        Layout.fillHeight: true;
+                        Layout.fillWidth: true;
+                        Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        color: "transparent"
+                        Image
+                        {
+                            id: cellularImage
+                            width: 24
+                            height: 24
+                            smooth: true
+                            fillMode: Image.PreserveAspectFit
+                            antialiasing: true
+                            verticalAlignment: Image.AlignVCenter
 
-                        // Button
-                        // {
-                        //     id: graphPageButton
-                        //     Layout.preferredWidth: 50
-                        //     Layout.preferredHeight: 50
-                        //     icon.name: "graph"
-                        //     icon.width: 32
-                        //     icon.height: 32
+                            Connections {
+                                target: Icon
 
-                        //     onClicked: {
-                        //         locationModel.currentPage = "graph"
-                        //     }
-                        // }
+                                function onThemeNameChanged()
+                                {
+                                    cellularImage.source = Icon.fromTheme("scalable/cellular-network.svg");
+                                }
+                            }
 
-                        // anchors.fill: parent
-                        // Rectangle
-                        // {
-                        //     Layout.fillHeight: true;
-                        //     Layout.fillWidth: false;
-                        //     Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
-                        //     color: "transparent"
-                        //     Image
-                        //     {
-                        //         id: fourGImage
-                        //         width: 24
-                        //         height: 24
-                        //         smooth: true
-                        //         fillMode: Image.PreserveAspectFit
-                        //         antialiasing: true
-                        //         verticalAlignment: Image.AlignVCenter
+                            //satisfy pre-load conditions
+                            Component.onCompleted:
+                            {
+                                cellularImage.source = Icon.fromTheme("scalable/cellular-network.svg")
+                            }
 
-                        //         Connections {
-                        //             target: Icon
+                            layer.enabled: true
+                            layer.effect: MultiEffect
+                            {
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
+                            }
+                        }
 
-                        //             function onThemeNameChanged()
-                        //             {
-                        //                 fourGImage.source = Icon.fromTheme("scalable/4g.svg");
-                        //             }
-                        //         }
+                        Text
+                        {
+                            text: "<h4>Cellular</h4>"
+                            anchors.left: cellularImage.right
+                            color: "white"
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
+                            leftPadding: 6
 
-                        //         //satisfy pre-load conditions
-                        //         Component.onCompleted:
-                        //         {
-                        //             fourGImage.source = Icon.fromTheme("scalable/4g.svg")
-                        //         }
-                        //     }
+                            layer.enabled: true
+                            layer.effect: MultiEffect
+                            {
+                                shadowEnabled: true
+                                shadowColor: "#000000"
+                                shadowOpacity: 1
+                                shadowBlur: 0.25
+                            }
+                        }
 
-                        //     Text
-                        //     {
-                        //         text: "<h4>4G</h4>"
-                        //         anchors.left: fourGImage.right
-                        //         color: "white"
-                        //         height: 24
-                        //         verticalAlignment: Text.AlignVCenter
-                        //     }
-                        // }
-                        // Rectangle
-                        // {
-                        //     Layout.fillHeight: true;
-                        //     Layout.fillWidth: false;
-                        //     Layout.preferredHeight: 15
-                        // }
+                        Text
+                        {
+                            id: cellularPOIValue
+                            anchors.right: parent.right
+                            color: "white"
+                            height: 24
+                            verticalAlignment: Text.AlignVCenter
+                            text: locationModel.cellularPointsOfInterest
+
+                            Connections {
+                                target: locationModel
+
+                                function onCellularPointsOfInterestChanged()
+                                {
+                                    cellularPOIValue.text = locationModel.cellularPointsOfInterest
+                                }
+                            }
+
+                            Component.onCompleted:
+                            {
+                                text = locationModel.cellularPointsOfInterest
+                            }
+                        }
                     }
                 }
             }

@@ -41,8 +41,12 @@ Item {
             PlacesMap
             {
                 id: places
+                antialiasing: true
             }
-            MapLegend {}
+            MapLegend
+            {
+                shaderSource: places
+            }
             FloatingMenu
             {
                 map: places.map
